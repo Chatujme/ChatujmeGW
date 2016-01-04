@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#
+# encoding=utf8  
 """
   IRC Brana pro chat na Chatujme.cz
   Projekt vychazi z lidegw v46 ( http://sourceforge.net/projects/lidegw/ )
@@ -9,8 +9,10 @@
   @author LuRy <lury@lury.cz>, <lury@chatujme.cz>
 """
 
-import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random
+import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json
 import traceback
+reload(sys)  
+sys.setdefaultencoding('utf8')
 
 PORT = 1111
 BIND = "0.0.0.0"
@@ -26,11 +28,21 @@ class uzivatel:
   rooms = []
   me = "chatujme.cz"
 
+
+class ChatujmeSystem:
+  def __init__ (self):
+    self.url = "http://api.chatujme.loc/irc"
+  def getRooms(self):
+    response = urllib2.urlopen( "%s/%s" %(self.url, "get-rooms") )
+    data = json.loads(response.read())
+    return data
+
 class Chatujme:
   def __init__ (self, mySocket, myAdress):
     self.socket = mySocket
     self.adress = myAdress
     self.user = copy.deepcopy(uzivatel())
+    self.system = ChatujmeSystem()
     self.connection = True
     self.rfc = ircrfc()
   
@@ -61,9 +73,9 @@ class Chatujme:
         else :
           self.send(":%s PONG %s\n" % (self.user.me, self.user.me))
       elif cmd[0] == "LIST":
-        self.send(self.rfc.cmd_list, "#123456 40 :Nazev mistnosti")
-        #self.send(self.rfc.cmd_list, "#%s %s :%s")
-        #self.send(":chatujme.cz 322 test #1111 100 :Tema mistnosti\n")
+        rooms = self.system.getRooms()
+        for room in rooms:
+          self.send(self.rfc.cmd_list, "#%d %d :%s" % ( room['id'], room['online'], room['nazev'].encode("utf8") ) )
       #elif cmd[0] == "PRIVMSG":
       #elif cmd[0] == "NOTICE":
       #elif cmd[0] == "NOTICE":
