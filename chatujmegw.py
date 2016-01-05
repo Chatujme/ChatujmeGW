@@ -138,7 +138,10 @@ class getMessages (threading.Thread):
             if int(room.lastId) >= int(mess['id']):
               continue
 
-            if mess['nick'] == self.inst.user.username:
+            if mess['nick'].lower() == self.inst.user.username.lower():
+              continue
+
+            if mess['nick'].lower() == self.inst.user.nick.lower():
               continue
 
             ''' Pri JOINu nechceme nacist zadne zpravy zpetne '''              
@@ -172,7 +175,6 @@ class getMessages (threading.Thread):
 
               elif "odstran" in t:
                 nick = re.findall(r'.+el\s(.+)\sbyl\s', msg)[0]
-                print nick
                 self.inst.socket.send( ":%s %s #%s :%s\n" % (nick, self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
               elif "předal" in t or "předala" in t:
