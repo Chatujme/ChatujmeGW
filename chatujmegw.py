@@ -72,7 +72,6 @@ class uzivatel:
   login = False
   sex = "boys"
   reading = False
-  firstLoad = True
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
   settingsShowPMFrom = True
@@ -82,6 +81,7 @@ class roomstruct:
   id = None
   lastId = 0
   lastMess = ""
+  firstLoad = True
 
 
 class Collector (threading.Thread):
@@ -120,6 +120,7 @@ class getMessages (threading.Thread):
     threading.Thread.__init__(self)
     self.inst = inst
     self.running = True
+    
   def run (self):
     while self.running and self.inst.connection:
       if len(self.inst.user.rooms) == 0:
@@ -127,8 +128,15 @@ class getMessages (threading.Thread):
         continue
       if not self.inst.connection:
         return False
+
+
+#      if self.inst.user.firstLoad:
+#        self.inst.reloadUsers(room.id)
+#        self.inst.user.firstLoad = False
+
       
       for room in self.inst.user.rooms:
+        
         #self.inst.reloadUsers(room.id)
         response = self.inst.getUrl( "%s/%s?id=%s&from=%s" %(self.inst.system.url, "get-messages", room.id, room.lastId ) )
         #print response
@@ -146,6 +154,11 @@ class getMessages (threading.Thread):
 
             room.lastId = mess['id']
             room.lastMess = mess['zprava']
+
+            if room.firstLoad:
+              continue
+
+
             msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
             msg = self.inst.cleanSmiles( msg )
             msg = self.inst.cleanUrls( msg )
@@ -189,10 +202,11 @@ class getMessages (threading.Thread):
           #  traceback.print_exc()
           time.sleep(1)
           pass
-          
-      if self.inst.user.firstLoad:
+
+      if room.firstLoad:          
         self.inst.reloadUsers(room.id)
-        self.inst.user.firstLoad = False
+        room.firstLoad = False
+        
       time.sleep(5)
     
 
