@@ -77,6 +77,7 @@ class uzivatel:
 class roomstruct:
   id = None
   lastId = 0
+  lastMess = ""
 
 
 class Collector (threading.Thread):
@@ -124,6 +125,7 @@ class getMessages (threading.Thread):
         return False
       
       for room in self.inst.user.rooms:
+        #self.inst.reloadUsers(room.id)
         response = self.inst.getUrl( "%s/%s?id=%s&from=%s" %(self.inst.system.url, "get-messages", room.id, room.lastId ) )
         #print response
         try:
@@ -131,10 +133,15 @@ class getMessages (threading.Thread):
           for mess in data['mess']:
             if int(room.lastId) >= int(mess['id']):
               continue
+
             if mess['nick'] == self.inst.user.username:
+              continue
+              
+            if not room.lastMess == "" and room.lastMess == mess['zprava']:
               continue
 
             room.lastId = mess['id']
+            room.lastMess = mess['zprava']
             msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
             msg = self.inst.cleanSmiles( msg )
 
@@ -162,6 +169,7 @@ class getMessages (threading.Thread):
                 nick = re.findall(r'.+el\s(.+)\spředal', msg)[0]
                 self.inst.socket.send( ":%s %s #%s -h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, nick)  )
                 self.inst.socket.send( ":%s %s #%s +h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, target)  )
+                self.inst.reloadUsers(room.id)
 
               else:
                 self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
@@ -225,12 +233,12 @@ class Chatujme:
     return response.read()
   
   def reloadUsers(self, rid):
-    getusers = self.getRoomUsers( room )
+    data = self.getRoomUsers( rid )
     users = "";
-    for user in getusers:
+    for user in data:
       users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
-    self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
-    self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
+    self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( rid, users ) )
+    self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(rid) )
     
   
   ''' Funkce na prihlaseni '''
@@ -284,7 +292,7 @@ class Chatujme:
   '''  
   def userOPStatus(self, user):
     if user['isOwner']:
-      return "~"
+      return "@"
     elif user['isHalfOP']:
       return "%"
     elif user['isOP']:
@@ -359,7 +367,7 @@ class Chatujme:
             nowroom = roomstruct()
             nowroom.id = int(data['id']) 
             self.user.rooms.append(nowroom)
-
+            
             self.send( self.rfc.RPL_JOIN, "#%s" %(data['id'].encode("utf8")) )
             self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'].encode("utf8"), data['topic'].encode("utf8")) )
             self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
@@ -386,7 +394,6 @@ class Chatujme:
 
       elif cmd[0] == "WHO":
         users = self.getRoomUsers( cmd[1].lstrip('#') )
-        print users
         #self.send( self.rfc.RPL_WHOREPLY, "#1029 znc techdar.ko cornelius.scuttled.net techdarko H@ :0 techdarko" )
         for user in users:
           self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H :0 %s" 
