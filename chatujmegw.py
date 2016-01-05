@@ -148,6 +148,7 @@ class getMessages (threading.Thread):
             room.lastMess = mess['zprava']
             msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
             msg = self.inst.cleanSmiles( msg )
+            msg = self.inst.cleanUrls( msg )
 
             if mess["typ"] == 0: #Public
               self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
@@ -216,6 +217,9 @@ class Chatujme:
   
   def cleanHighlight(self, msg):
     return re.sub("<span style='background:#eded1a'>([^<]+)</span>", "\\1", msg)
+
+  def cleanUrls(self, msg):
+    return re.sub('<a href="([^"]+)" target="_blank">([^<]+)</a>', "\\1", msg)
   
   def cleanSmiles(self, msg):
     if self.user.showSmiles == 0:
@@ -273,10 +277,13 @@ class Chatujme:
       return False
   
   ''' Kontrola jeslti je v mistnosti '''
-  def isInRoom(self, room):
+  def isInRoom(self, room, rtn=False):
     for croom in self.user.rooms:
-      if room == croom.id:
-        return True
+      if int(room) == int(croom.id):
+        if rtn:
+          return croom
+        else:
+          return True
     return False
   
   def joinToRoom(self, room_id, Key = None):
@@ -289,6 +296,16 @@ class Chatujme:
     response = self.getUrl( "%s/%s?id=%s" %(self.system.url, "get-users", room_id) )
     data = json.loads(response)
     return data
+
+  # @todo Dodelat mody mistnosti
+  def part(self,room_id):
+    croom = self.isInRoom(room_id, True) 
+    if not croom == False:  
+      self.user.rooms.remove(croom)
+    self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
+    self.getUrl( "%s/%s?id=%" %(self.system.url, "part", room_id) )
+    #data = json.loads(response)
+        #return data
 
   '''
     Zakladatel - +q ~
@@ -355,7 +372,7 @@ class Chatujme:
         if not self.user.login:
           self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in" % (self.user.me))
           return False
-        
+
         for room in rooms:
           if self.isInRoom(room):
             continue
@@ -381,7 +398,15 @@ class Chatujme:
             self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
          
         #if self.user.nick
-      #elif cmd[0] == "PART":
+        
+      # @todo Dodelat mody mistnosti
+      elif cmd[0] == "PART":
+        if len(cmd) < 2:
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( cmd[0] ))
+        else:
+          room_id = cmd[1].lstrip('#')
+          self.part(room_id)
+          
       elif cmd[0] == "PING":
         if len(cmd) >= 2:
           self.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
@@ -397,6 +422,7 @@ class Chatujme:
       #elif cmd[0] == "PRIVMSG":
 
       elif cmd[0] == "MODE":
+      # @todo Dodelat mody mistnosti
         self.send(self.rfc.RPL_CHANNELMODEIS, "%s +%s" % ( cmd[1], "tn" ))
 
       elif cmd[0] == "WHO":
