@@ -273,16 +273,13 @@ class Chatujme:
     response = self.postUrl ( "%s/%s" % (self.system.url, "check-login"), postdata )
     data = json.loads(response)
 
-    ''' Spatny login ''' 
-    if data['code'] == 401:
+    if data['code'] == 401: #Spatny login
       self.send(self.rfc.ERR_NOLOGIN, "%s: %s" % (self.user.username, data['message'].encode("utf8") ) )
       return False
-    ''' Nove prihlaseni ''' 
-    elif data['code'] == 200:
+    elif data['code'] == 200: #Nove prihlaseni
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
       return True
-    ''' Uzivatel je jiz prihlasen podle cookies ''' 
-    elif data['code'] == 201:
+    elif data['code'] == 201: #Uzivatel je jiz prihlasen podle cookies 
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
       return True 
     else:
