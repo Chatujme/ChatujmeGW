@@ -129,17 +129,9 @@ class getMessages (threading.Thread):
       if not self.inst.connection:
         return False
 
-
-#      if self.inst.user.firstLoad:
-#        self.inst.reloadUsers(room.id)
-#        self.inst.user.firstLoad = False
-
-      
       for room in self.inst.user.rooms:
         
-        #self.inst.reloadUsers(room.id)
         response = self.inst.getUrl( "%s/%s?id=%s&from=%s" %(self.inst.system.url, "get-messages", room.id, room.lastId ) )
-        #print response
         try:
           data = json.loads(response)
           for mess in data['mess']:
@@ -148,7 +140,8 @@ class getMessages (threading.Thread):
 
             if mess['nick'] == self.inst.user.username:
               continue
-              
+
+            ''' Pri JOINu nechceme nacist zadne zpravy zpetne '''              
             if not room.lastMess == "" and room.lastMess == mess['zprava']:
               continue
 
@@ -203,6 +196,7 @@ class getMessages (threading.Thread):
           time.sleep(1)
           pass
 
+      ''' Pri JOINu nacteme seznam uzivatelu '''              
       if room.firstLoad:          
         self.inst.reloadUsers(room.id)
         room.firstLoad = False
@@ -257,6 +251,7 @@ class Chatujme:
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
   
+  ''' Prenacteni seznamu uzivatelu /NAMES '''
   def reloadUsers(self, rid):
     data = self.getRoomUsers( rid )
     users = "";
@@ -278,12 +273,15 @@ class Chatujme:
     response = self.postUrl ( "%s/%s" % (self.system.url, "check-login"), postdata )
     data = json.loads(response)
 
+    ''' Spatny login ''' 
     if data['code'] == 401:
       self.send(self.rfc.ERR_NOLOGIN, "%s: %s" % (self.user.username, data['message'].encode("utf8") ) )
       return False
+    ''' Nove prihlaseni ''' 
     elif data['code'] == 200:
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
-      return True 
+      return True
+    ''' Uzivatel je jiz prihlasen podle cookies ''' 
     elif data['code'] == 201:
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
       return True 
@@ -318,8 +316,6 @@ class Chatujme:
       self.user.rooms.remove(croom)
     self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
     self.getUrl( "%s/%s?id=%" %(self.system.url, "part", room_id) )
-    #data = json.loads(response)
-        #return data
 
   '''
     Zakladatel - +q ~
@@ -356,9 +352,7 @@ class Chatujme:
     else:
       irccmd = string.split(data, "\n")
     for cmd_array in irccmd:
-      # rozdelim jednotlivy pole na cmd[X]
       cmd = string.split(cmd_array.strip(), " ")
-      log("%s" %(cmd))
       
       if cmd[0] == "NICK":
         self.user.nick = cmd[1]
@@ -411,9 +405,6 @@ class Chatujme:
             self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
             self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
          
-        #if self.user.nick
-        
-      # @todo Dodelat mody mistnosti
       elif cmd[0] == "PART":
         if len(cmd) < 2:
           self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( cmd[0] ))
@@ -433,15 +424,12 @@ class Chatujme:
         for room in rooms:
           self.send(self.rfc.RPL_LIST, "#%d %d :%s" % ( room['id'], room['online'], room['nazev'].encode("utf8") ) )
         self.send(self.rfc.RPL_LISTEND, "END of /List")
-      #elif cmd[0] == "PRIVMSG":
 
-      elif cmd[0] == "MODE":
-      # @todo Dodelat mody mistnosti
+      elif cmd[0] == "MODE": # @todo Dodelat mody mistnosti
         self.send(self.rfc.RPL_CHANNELMODEIS, "%s +%s" % ( cmd[1], "tn" ))
 
-      elif cmd[0] == "WHO":
+      elif cmd[0] == "WHO": # @todo Fixnout /WHO
         users = self.getRoomUsers( cmd[1].lstrip('#') )
-        #self.send( self.rfc.RPL_WHOREPLY, "#1029 znc techdar.ko cornelius.scuttled.net techdarko H@ :0 techdarko" )
         for user in users:
           self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H :0 %s" 
           %( 
@@ -452,7 +440,6 @@ class Chatujme:
               user['nick'].encode("utf8"), 
               user['nick'].encode("utf8")
           ))
-          #self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H%s :0 %s" %( cmd[1].lstrip('#'), user['nick'].encode("utf8"), user['sex'].encode("utf8"), self.user.me, user['nick'].encode("utf8"), self.userOPStatus(user), self.user.me  ) )
         self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
       
       elif cmd[0] == "PRIVMSG":
@@ -478,10 +465,6 @@ class Chatujme:
             
           data = self.sendText( msg, roomId, cmd[1] )
         
-      
-      #else:
-        #self.socket.send(":%s PONG :%s\n")
-      
   def send(self, _id, msg):
     log("SENDING: %s -> %s" %(_id,msg))
     if _id == "JOIN":
@@ -501,7 +484,6 @@ class SocketHandler(threading.Thread):
     self.running = True
   def run (self):
     log("Prijato spojeni z %s" % (self.address[0]))
-
     instance = Chatujme(self.socket, self.address[0]);    
 
     while self.running:
