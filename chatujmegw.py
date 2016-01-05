@@ -411,9 +411,9 @@ class Chatujme:
           
       elif cmd[0] == "PING":
         if len(cmd) >= 2:
-          self.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
+          self.socket.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
         else :
-          self.send(":%s PONG %s\n" % (self.user.me, self.user.me))
+          self.socket.send(":%s PONG %s\n" % (self.user.me, self.user.me))
 
       elif cmd[0] == "LIST":
         rooms = self.system.getRooms()
