@@ -17,9 +17,9 @@ import traceback
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
-PORT = 1111
-BIND = "0.0.0.0"
-version = 1.001
+PORT = 6667 #Default IRC port
+BIND = "0.0.0.0" #Bind to all IP
+version = 1.1
 path = os.path.dirname(__file__)
 
 motd = ''':
