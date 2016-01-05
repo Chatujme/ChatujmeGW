@@ -143,9 +143,9 @@ class getMessages (threading.Thread):
             
           time.sleep(5)
         except:
-          if traceback:
-            traceback.print_exc()
-          #pass
+          #if traceback:
+          #  traceback.print_exc()
+          pass
       time.sleep(1)
     
 
@@ -376,7 +376,6 @@ class Chatujme:
             roomId = cmd[1][1:]
             
           data = self.sendText( msg, roomId, cmd[1] )
-          print data
         
       
       #else:
