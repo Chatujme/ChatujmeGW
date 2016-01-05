@@ -144,7 +144,6 @@ class getMessages (threading.Thread):
               self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             elif mess["typ"] == 2: #System
               t = msg.replace("'","")
-              print t
               if "vstoupil" in t or "vstoupila" in t:
                 nick = re.findall(r'.+\s(.+)\svstoupil', msg)[0]
                 self.inst.socket.send( ":%s %s #%s :%s\n" %( nick, self.inst.rfc.RPL_JOIN, room.id, msg )  )
@@ -174,8 +173,8 @@ class getMessages (threading.Thread):
             
           time.sleep(5)
         except:
-          if traceback:
-            traceback.print_exc()
+          #if traceback:
+          #  traceback.print_exc()
           time.sleep(1)
           pass
       time.sleep(1)
