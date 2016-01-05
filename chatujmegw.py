@@ -51,6 +51,8 @@ class ircrfc:
   RPL_ENDOFNAMES = 366
   RPL_NOTICE = "NOTICE"
   RPL_JOIN = "JOIN"
+  RPL_PART = "PART"
+  RPL_MODE = "MODE"
   RPL_PRIVMSG = "PRIVMSG"
     
 
@@ -69,6 +71,8 @@ class uzivatel:
   reading = False
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
+  settingsShowPMFrom = True
+  showSmiles = 1 #0 - Schovat, 1 - Text podoba, 2 - Url  
 
 class roomstruct:
   id = None
@@ -131,17 +135,39 @@ class getMessages (threading.Thread):
               continue
 
             room.lastId = mess['id']
-            msg = self.inst.system.cleanHighlight(mess['zprava'].encode("utf8"))
-            msg = self.inst.system.cleanSmiles( msg )
+            msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
+            msg = self.inst.cleanSmiles( msg )
 
             if mess["typ"] == 0: #Public
               self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 1: #PM
               self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             elif mess["typ"] == 2: #System
-              self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+              t = msg.replace("'","")
+              print t
+              if "vstoupil" in t or "vstoupila" in t:
+                nick = re.findall(r'.+\s(.+)\svstoupil', msg)[0]
+                self.inst.socket.send( ":%s %s #%s :%s\n" %( nick, self.inst.rfc.RPL_JOIN, room.id, msg )  )
+
+              elif "odešel" in t or "odešla" in t:
+                nick = re.findall(r'.+\s(.+)\sode', msg)[0]
+                self.inst.socket.send( ":%s %s #%s :%s\n" % (nick, self.inst.rfc.RPL_PART, room.id, 'part')  )
+
+              elif "odstran" in t:
+                nick = re.findall(r'.+el\s(.+)\sbyl\s', msg)[0]
+                print nick
+                self.inst.socket.send( ":%s %s #%s :%s\n" % (nick, self.inst.rfc.RPL_PART, room.id, 'timeout')  )
+
+              elif "předal" in t or "předala" in t:
+                target = re.findall(r'.+správce\s(.+)$', msg)[0]
+                nick = re.findall(r'.+el\s(.+)\spředal', msg)[0]
+                self.inst.socket.send( ":%s %s #%s -h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, nick)  )
+                self.inst.socket.send( ":%s %s #%s +h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, target)  )
+
+              else:
+                self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 3: #WALL
-              if self.inst.settingsShowPMFrom:
+              if self.inst.user.settingsShowPMFrom:
                 self.inst.socket.send( ":%s %s %s :[Z kanálu %s #%d ] %s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
               else:
                 self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
@@ -150,6 +176,7 @@ class getMessages (threading.Thread):
         except:
           if traceback:
             traceback.print_exc()
+          time.sleep(1)
           pass
       time.sleep(1)
     
@@ -163,11 +190,6 @@ class ChatujmeSystem:
     data = json.loads(response.read())
     return data
     
-  def cleanHighlight(self, msg):
-    return re.sub("<span style='background:#eded1a'>([^<]+)</span>", "\\1", msg)
-  
-  def cleanSmiles(self, msg):
-    return re.sub('<img src=\'.+?smiles/([^.]+).gif\' alt=\'(.+?)\'>', "\\2", msg)
 
 class Chatujme:
   def __init__ (self, mySocket, myAdress):
@@ -176,9 +198,21 @@ class Chatujme:
     self.user = copy.deepcopy(uzivatel())
     self.system = ChatujmeSystem()
     self.connection = True
-    self.settingsShowPMFrom = True
     self.rfc = ircrfc()
   
+  def cleanHighlight(self, msg):
+    return re.sub("<span style='background:#eded1a'>([^<]+)</span>", "\\1", msg)
+  
+  def cleanSmiles(self, msg):
+    if self.user.showSmiles == 0:
+      pattern = ""
+    elif self.user.showSmiles == 1:
+      pattern = "\\3"
+    elif self.user.showSmiles == 2:
+      pattern = "\\1"
+      
+    return re.sub('<img src=\'(.+?smiles/([^.]+).gif)\' alt=\'(.+?)\'>', pattern, msg)
+
   ''' Funkce na GET '''
   def getUrl(self, url):
     response = self.user.urlfetcher.open(url)
@@ -190,6 +224,15 @@ class Chatujme:
     response = self.user.urlfetcher.open(url , data=postdata)
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
+  
+  def reloadUsers(self, rid):
+    getusers = self.getRoomUsers( room )
+    users = "";
+    for user in getusers:
+      users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
+    self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
+    self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
+    
   
   ''' Funkce na prihlaseni '''
   def checkLogin(self):
@@ -254,7 +297,6 @@ class Chatujme:
   
   def sendText( self, text, room_id, target ):
     postdata = "roomId=%s&text=%s&target=%s" %(room_id, text, target)
-    print postdata
     response = self.postUrl( "%s/%s" %(self.system.url, "post-text"), postdata )
     data = json.loads(response)
     return data
