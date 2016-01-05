@@ -140,11 +140,16 @@ class getMessages (threading.Thread):
               self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             elif mess["typ"] == 2: #System
               self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+            elif mess["typ"] == 3: #WALL
+              if self.inst.settingsShowPMFrom:
+                self.inst.socket.send( ":%s %s %s :[Z kanálu %s #%d ] %s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
+              else:
+                self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
           time.sleep(5)
         except:
-          #if traceback:
-          #  traceback.print_exc()
+          if traceback:
+            traceback.print_exc()
           pass
       time.sleep(1)
     
@@ -152,7 +157,7 @@ class getMessages (threading.Thread):
 
 class ChatujmeSystem:
   def __init__ (self):
-    self.url = "http://api.chatujme.loc/irc"
+    self.url = "http://api.chatujme.cz/irc"
   def getRooms(self):
     response = urllib2.urlopen( "%s/%s" %(self.url, "get-rooms") )
     data = json.loads(response.read())
@@ -171,6 +176,7 @@ class Chatujme:
     self.user = copy.deepcopy(uzivatel())
     self.system = ChatujmeSystem()
     self.connection = True
+    self.settingsShowPMFrom = True
     self.rfc = ircrfc()
   
   ''' Funkce na GET '''
