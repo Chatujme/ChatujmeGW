@@ -207,7 +207,7 @@ class getMessages (threading.Thread):
 
 class ChatujmeSystem:
   def __init__ (self):
-    self.url = "http://api.chatujme.loc/irc"
+    self.url = "http://api.chatujme.cz/irc"
   def getRooms(self):
     response = urllib2.urlopen( "%s/%s" %(self.url, "get-rooms") )
     data = json.loads(response.read())
