@@ -207,7 +207,7 @@ class getMessages (threading.Thread):
 
 class ChatujmeSystem:
   def __init__ (self):
-    self.url = "http://api.chatujme.cz/irc"
+    self.url = "http://api.chatujme.loc/irc"
   def getRooms(self):
     response = urllib2.urlopen( "%s/%s" %(self.url, "get-rooms") )
     data = json.loads(response.read())
@@ -312,7 +312,7 @@ class Chatujme:
     if not croom == False:  
       self.user.rooms.remove(croom)
     self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
-    self.getUrl( "%s/%s?id=%" %(self.system.url, "part", room_id) )
+    self.getUrl( "%s/%s?id=%s" %(self.system.url, "part", room_id) )
 
   '''
     Zakladatel - +q ~
