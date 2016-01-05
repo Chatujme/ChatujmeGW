@@ -7,6 +7,9 @@
   
   @license MIT
   @author LuRy <lury@lury.cz>, <lury@chatujme.cz>
+  
+  rfc-codes https://www.alien.net.au/irc/irc2numerics.html
+  rfc https://tools.ietf.org/html/rfc1459
 """
 
 import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib
@@ -69,6 +72,7 @@ class uzivatel:
   login = False
   sex = "boys"
   reading = False
+  firstLoad = True
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
   settingsShowPMFrom = True
@@ -179,13 +183,16 @@ class getMessages (threading.Thread):
               else:
                 self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
-          time.sleep(5)
         except:
           #if traceback:
           #  traceback.print_exc()
           time.sleep(1)
           pass
-      time.sleep(1)
+          
+      if self.inst.user.firstLoad:
+        self.inst.reloadUsers(room.id)
+        self.inst.user.firstLoad = False
+      time.sleep(5)
     
 
 
