@@ -45,6 +45,7 @@ class ircrfc:
   RPL_LISTEND = 323
   RPL_TOPIC = 332
   RPL_NOTOPIC = 331
+  ERR_UNKNOWNCOMMAND = 421
   ERR_NEEDMOREPARAMS = 461
   ERR_NOLOGIN = 444
   ERR_BANNEDFROMCHAN = 474
@@ -448,7 +449,11 @@ class Chatujme:
           ))
         self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
       
-      elif command == "PRIVMSG":
+      elif command == "PRIVMSG" or command == "NOTICE" and len(cmd[2]) > 0:
+        
+        if command == "NOTICE":
+          cmd[2] = ":Notice: %s" %cmd[2][1:]
+        
         if cmd[1][0] == "#":
           isPM = False
         else:
@@ -458,6 +463,16 @@ class Chatujme:
           cmd[2] = ":%s" %(cmd[2])
           
         text = ' '.join(cmd[2:])[1:]
+        
+        if (text.find("VERSION") !=-1) and (len(text) > 20):
+          text = text + version
+        elif cmd[2].find("PING") == 2:
+          text = "/m %s \xc2PING %s" % (cmd[1], cmd[3].replace("\x01","\xc2"))
+        elif cmd[2].find("PONG") == 2:
+          text = "/m %s \xc2PONG %s" % (cmd[1], cmd[3].replace("\x01","\xc2"))
+          log(text)
+        
+        
         msg_len = 390
         msgArray = [text[i:i+msg_len] for i in range(0, len(text), msg_len)]
         
@@ -470,6 +485,25 @@ class Chatujme:
             roomId = cmd[1][1:]
             
           data = self.sendText( msg, roomId, cmd[1] )
+          
+      elif command == "KICK":
+        if len(cmd) == 3:
+          self.sendText("/kick " + cmd[2], cmd[1].lstrip('#')) # nick, room
+        elif len(cmd) > 3:
+          if not cmd[3].startswith(":"):
+            cmd[3] = ":%s" % (cmd[3])
+          reason = ' '.join(cmd[3:])[1:] # dvojtecku nechceme
+          self.sendText("/kick %s %s" % (cmd[2], reason), cmd[1].lstrip('#')) # nick, room
+        else:
+          self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\n" % ("KICK"))
+      
+      elif command == "QUIT":
+        for room in self.user.rooms:
+          self.part(room.id)
+        self.connection = False
+        
+      elif command != "":
+        self.send( self.rfc.ERR_UNKNOWNCOMMAND, ":%s Unknown command" %(cmd[0]) )
         
   def send(self, _id, msg):
     log("SENDING: %s -> %s" %(_id,msg))
