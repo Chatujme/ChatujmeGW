@@ -186,7 +186,6 @@ class getMessages (threading.Thread):
                 ret = re.findall(r'.+\s(.+)\svstoupi(la|l)', msg)[0]
                 nick = ret[0]
                 u.nick = nick
-                print ret[1]
                 if ret[1] == "la":
                   u.sex = "girls"
                 else:
@@ -220,8 +219,8 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
         except:
-          if traceback:
-            traceback.print_exc()
+          #if traceback:
+          #  traceback.print_exc()
           time.sleep(1)
           pass
 
