@@ -38,6 +38,7 @@ MM.          MM    MM
 
 class ircrfc:
   RPL_WELCOME = 001
+  RPL_ENDOFMOTD = 376
   RPL_YOURHOST = 002
   RPL_LISTSTART = 321
   RPL_LIST = 322
@@ -280,9 +281,11 @@ class Chatujme:
       return False
     elif data['code'] == 200: #Nove prihlaseni
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
+      self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
       return True
     elif data['code'] == 201: #Uzivatel je jiz prihlasen podle cookies 
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
+      self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
       return True 
     else:
       return False
@@ -352,6 +355,7 @@ class Chatujme:
       irccmd = string.split(data, "\n")
     for cmd_array in irccmd:
       cmd = string.split(cmd_array.strip(), " ")
+      #log("CMD %s" %( cmd[0]))
       
       if cmd[0] == "NICK":
         self.user.nick = cmd[1]
@@ -381,10 +385,11 @@ class Chatujme:
           return False
 
         for room in rooms:
-          if self.isInRoom(room):
-            continue
+          
+          inRoom = self.isInRoom(room)
           
           data = self.joinToRoom(room)
+          #log("JOIN to %s" %( room ))
           
           if data['code'] == 403:
             self.send( self.rfc.ERR_BANNEDFROMCHAN, "#%s :Cannot join channel" %( data['id'].encode("utf8") ) ) 
@@ -395,9 +400,10 @@ class Chatujme:
             for user in getusers:
               users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
             
-            nowroom = roomstruct()
-            nowroom.id = int(data['id']) 
-            self.user.rooms.append(nowroom)
+            if not inRoom:
+              nowroom = roomstruct()
+              nowroom.id = int(data['id']) 
+              self.user.rooms.append(nowroom)
             
             self.send( self.rfc.RPL_JOIN, "#%s" %(data['id'].encode("utf8")) )
             self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'].encode("utf8"), data['topic'].encode("utf8")) )
