@@ -45,6 +45,7 @@ class ircrfc:
   RPL_LISTEND = 323
   RPL_TOPIC = 332
   RPL_NOTOPIC = 331
+  ERR_NOSUCHCHANNEL = 403
   ERR_UNKNOWNCOMMAND = 421
   ERR_NEEDMOREPARAMS = 461
   ERR_NOLOGIN = 444
@@ -219,12 +220,13 @@ class ChatujmeSystem:
     
 
 class Chatujme:
-  def __init__ (self, mySocket, myAdress):
+  def __init__ (self, mySocket, myAdress, handler):
     self.socket = mySocket
     self.adress = myAdress
     self.user = copy.deepcopy(uzivatel())
     self.system = ChatujmeSystem()
     self.connection = True
+    self.parent = handler
     self.rfc = ircrfc()
   
   def cleanHighlight(self, msg):
@@ -421,7 +423,20 @@ class Chatujme:
         else:
           room_id = cmd[1].lstrip('#')
           self.part(room_id)
-          
+      
+      elif command == "NAMES":
+        room_id = cmd[1].lstrip('#')
+        for room in self.user.rooms:
+          if int(room_id) == int(room.id):
+            getusers = self.getRoomUsers( room.id )
+            users = ""
+            for user in getusers:
+              users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
+            self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( room.id, users ) )
+            self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room.id) )
+            return True
+        self.send(self.rfc.ERR_NOSUCHCHANNEL, "#%s :No such channel\n" % (room_id))
+      
       elif command == "PING":
         if len(cmd) >= 2:
           self.socket.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
@@ -500,11 +515,18 @@ class Chatujme:
         else:
           self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\n" % ("KICK"))
       
-      elif command == "QUIT":
-        for room in self.user.rooms:
-          self.part(room.id)
-        self.connection = False
-        
+      elif command == "QUIT" or command == "QUIT2":
+        if command == "QUIT":
+          for room in self.user.rooms:
+            self.part(room.id)
+          self.connection = False
+          self.parent.running = False
+        else:
+          for r in self.user.rooms:
+            self.user.rooms.remove(r)
+          self.parent.running = False
+          self.connection = False
+
       elif command != "":
         self.send( self.rfc.ERR_UNKNOWNCOMMAND, ":%s Unknown command" %(cmd[0]) )
         
@@ -527,7 +549,7 @@ class SocketHandler(threading.Thread):
     self.running = True
   def run (self):
     log("Prijato spojeni z %s" % (self.address[0]))
-    instance = Chatujme(self.socket, self.address[0]);    
+    instance = Chatujme(self.socket, self.address[0], self);    
 
     while self.running:
       timestamp = int(time.time())
