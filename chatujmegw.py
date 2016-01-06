@@ -353,7 +353,10 @@ class Chatujme:
   def sendText( self, text, room_id, target ):
     postdata = "roomId=%s&text=%s&target=%s" %(room_id, urllib.quote_plus(text), target)
     response = self.postUrl( "%s/%s" %(self.system.url, "post-text"), postdata )
-    data = json.loads(response)
+    try:
+      data = json.loads(response)
+    except:
+      data = [ ]
     return data
   
   ''' Parsovani prikazu z IRC '''
