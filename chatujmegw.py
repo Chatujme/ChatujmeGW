@@ -317,7 +317,10 @@ class Chatujme:
     croom = self.isInRoom(room_id, True) 
     if not croom == False:  
       self.user.rooms.remove(croom)
-    self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
+    try:
+      self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
+    except:
+      pass
     self.getUrl( "%s/%s?id=%s" %(self.system.url, "part", room_id) )
 
   '''
