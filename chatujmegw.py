@@ -500,15 +500,16 @@ class Chatujme:
         msg_len = 390
         msgArray = [text[i:i+msg_len] for i in range(0, len(text), msg_len)]
         
-        for msg in msgArray:
-          if isPM:
-            msg = "/m %s %s" % (cmd[1], msg)
-            r = self.user.rooms[0]
-            roomId = r.id
-          else:
-            roomId = cmd[1][1:]
-            
-          data = self.sendText( msg, roomId, cmd[1] )
+        for msgx in msgArray:
+          for msg in msgx.split("\n"):
+            if isPM:
+              msg = "/m %s %s" % (cmd[1], msg)
+              r = self.user.rooms[0]
+              roomId = r.id
+            else:
+              roomId = cmd[1][1:]
+              
+            data = self.sendText( msg, roomId, cmd[1] )
           
       elif command == "KICK":
         if len(cmd) == 3:
