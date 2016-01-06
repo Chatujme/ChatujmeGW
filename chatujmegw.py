@@ -78,6 +78,7 @@ class uzivatel:
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
   settingsShowPMFrom = True
+  timer = 5
   showSmiles = 1 #0 - Schovat, 1 - Text podoba, 2 - Url  
 
 class roomstruct:
@@ -206,7 +207,7 @@ class getMessages (threading.Thread):
         self.inst.reloadUsers(room.id)
         room.firstLoad = False
         
-      time.sleep(5)
+      time.sleep(self.inst.user.timer)
     
 
 
@@ -520,6 +521,20 @@ class Chatujme:
         else:
           self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\n" % ("KICK"))
       
+      elif command == "SET" and len(cmd) >= 2:
+        message = None
+        if cmd[1].upper() == "TIMER":
+          try:
+            num = int(cmd[2])
+            self.user.timer = num
+            message = "Prodleva mezi aktualizacemi nastavena na %s sekund." % (num)
+          except:
+            message = "SET TIMER cislo - nastaveni prodlevy mezi aktializaci chatu, aktualni hodnota: %s" % (self.kernel.timer)
+        
+        if message:
+          self.send(self.rfc.RPL_NOTICE, ":%s" %(message) )
+        
+        
       elif command == "QUIT" or command == "QUIT2":
         if command == "QUIT":
           for room in self.user.rooms:
