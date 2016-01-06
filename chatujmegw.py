@@ -355,19 +355,20 @@ class Chatujme:
       irccmd = string.split(data, "\n")
     for cmd_array in irccmd:
       cmd = string.split(cmd_array.strip(), " ")
+      command = cmd[0].upper()
       #log("CMD %s" %( cmd[0]))
       
-      if cmd[0] == "NICK":
+      if command == "NICK":
         self.user.nick = cmd[1]
         if self.user.password != "":
           self.user.login = self.checkLogin()
          
-      elif cmd[0] == "USER":
+      elif command == "USER":
         self.user.username = cmd[1]
         if self.user.password != "":
           self.user.login = self.checkLogin()
          
-      elif cmd[0] == "PASS":
+      elif command == "PASS":
         self.user.password = cmd[1]
         if self.user.username == "":
           self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.user.me))
@@ -376,7 +377,7 @@ class Chatujme:
         else:
           self.user.login = self.checkLogin()
          
-      elif cmd[0] == "JOIN":
+      elif command == "JOIN":
         room = cmd[1].replace('#', '')
         rooms = string.split(room, ",")
         
@@ -410,30 +411,30 @@ class Chatujme:
             self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
             self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
          
-      elif cmd[0] == "PART":
+      elif command == "PART":
         if len(cmd) < 2:
-          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( cmd[0] ))
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( command ))
         else:
           room_id = cmd[1].lstrip('#')
           self.part(room_id)
           
-      elif cmd[0] == "PING":
+      elif command == "PING":
         if len(cmd) >= 2:
           self.socket.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
         else :
           self.socket.send(":%s PONG %s\n" % (self.user.me, self.user.me))
 
-      elif cmd[0] == "LIST":
+      elif command == "LIST":
         rooms = self.system.getRooms()
         self.send(self.rfc.RPL_LISTSTART, "Channels :Users Name")
         for room in rooms:
           self.send(self.rfc.RPL_LIST, "#%d %d :%s" % ( room['id'], room['online'], room['nazev'].encode("utf8") ) )
         self.send(self.rfc.RPL_LISTEND, "END of /List")
 
-      elif cmd[0] == "MODE": # @todo Dodelat mody mistnosti
+      elif command == "MODE": # @todo Dodelat mody mistnosti
         self.send(self.rfc.RPL_CHANNELMODEIS, "%s +%s" % ( cmd[1], "tn" ))
 
-      elif cmd[0] == "WHO": # @todo Fixnout /WHO
+      elif command == "WHO": # @todo Fixnout /WHO
         users = self.getRoomUsers( cmd[1].lstrip('#') )
         for user in users:
           self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H :0 %s" 
@@ -447,7 +448,7 @@ class Chatujme:
           ))
         self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
       
-      elif cmd[0] == "PRIVMSG":
+      elif command == "PRIVMSG":
         if cmd[1][0] == "#":
           isPM = False
         else:
