@@ -14,7 +14,6 @@
 
 import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib
 import traceback
-from pprint import pprint
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
@@ -74,7 +73,7 @@ class uzivatel:
   rooms = []
   me = "chatujme.cz"
   login = False
-  sex = "M"
+  sex = "boys"
   reading = False
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
