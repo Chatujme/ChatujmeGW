@@ -519,13 +519,11 @@ class Chatujme:
         if command == "QUIT":
           for room in self.user.rooms:
             self.part(room.id)
-          self.connection = False
-          self.parent.running = False
         else:
           for r in self.user.rooms:
             self.user.rooms.remove(r)
-          self.parent.running = False
-          self.connection = False
+        self.parent.running = False
+        self.connection = False
 
       elif command != "":
         self.send( self.rfc.ERR_UNKNOWNCOMMAND, ":%s Unknown command" %(cmd[0]) )
