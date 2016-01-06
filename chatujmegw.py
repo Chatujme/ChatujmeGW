@@ -275,6 +275,11 @@ class Chatujme:
       return False
     if self.user.password == "":
       return False
+    
+    ''' Zmena cookie souboru podle prihlasenyho usera'''
+    self.user.cookieJar = cookielib.LWPCookieJar("%s/cookies_%s.txt" % ( path, self.user.username ))
+    self.user.urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.user.cookieJar), urllib2.HTTPSHandler(debuglevel=1))
+    
     postdata = "username=%s&password=%s" %( self.user.username, self.user.password )
     response = self.postUrl ( "%s/%s" % (self.system.url, "check-login"), postdata )
     data = json.loads(response)
