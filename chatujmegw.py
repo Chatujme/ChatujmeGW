@@ -70,7 +70,7 @@ class uzivatel:
   username = ""
   nick = ""
   password = ""
-  rooms = []
+#  rooms = []
   me = "chatujme.cz"
   login = False
   sex = "boys"
@@ -87,6 +87,7 @@ class userInRoom:
   
 class roomstruct:
   id = None
+  nick = ""
   users = [ ]
   lastId = 0
   lastMess = ""
@@ -136,27 +137,30 @@ class getMessages (threading.Thread):
     
   def run (self):
     while self.running and self.inst.connection:
-      if len(self.inst.user.rooms) == 0:
+    
+      if len(self.inst.rooms) == 0:
         time.sleep(5)
         continue
       if not self.inst.connection:
         return False
 
-      for room in self.inst.user.rooms:
+      for room in self.inst.rooms:
         
-        response = self.inst.getUrl( "%s/%s?id=%s&from=%s" %(self.inst.system.url, "get-messages", room.id, room.lastId ) )
         try:
+          response = self.inst.getUrl( "%s/%s?id=%s&from=%d" %(self.inst.system.url, "get-messages", room.id, int(room.lastId) ) )
           data = json.loads(response)
+        except:
+          data = { 'mess' : [ ] }
+
+        try:
           for mess in data['mess']:
+          
             if int(room.lastId) >= int(mess['id']):
               continue
-
             if mess['nick'].lower() == self.inst.user.username.lower():
               continue
-
             if mess['nick'].lower() == self.inst.user.nick.lower():
               continue
-
             ''' Pri JOINu nechceme nacist zadne zpravy zpetne '''              
             if not room.lastMess == "" and room.lastMess == mess['zprava']:
               continue
@@ -166,7 +170,6 @@ class getMessages (threading.Thread):
 
             if room.firstLoad:
               continue
-
 
             msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
             msg = self.inst.cleanSmiles( msg )
@@ -218,8 +221,8 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
         except:
-          #if traceback:
-          #  traceback.print_exc()
+          if traceback:
+            traceback.print_exc()
           time.sleep(1)
           pass
 
@@ -248,6 +251,7 @@ class Chatujme:
     self.user = copy.deepcopy(uzivatel())
     self.system = ChatujmeSystem()
     self.connection = True
+    self.rooms = [ ]
     self.parent = handler
     self.rfc = ircrfc()
     
@@ -332,7 +336,7 @@ class Chatujme:
   
   ''' Kontrola jeslti je v mistnosti '''
   def isInRoom(self, room, rtn=False):
-    for croom in self.user.rooms:
+    for croom in self.rooms:
       if int(room) == int(croom.id):
         if rtn:
           return croom
@@ -365,7 +369,7 @@ class Chatujme:
   def part(self,room_id):
     croom = self.isInRoom(room_id, True) 
     if not croom == False:  
-      self.user.rooms.remove(croom)
+      self.rooms.remove(croom)
     try:
       self.send(None, ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
     except:
@@ -458,9 +462,10 @@ class Chatujme:
               users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
             
             if not inRoom:
-              nowroom = roomstruct()
-              nowroom.id = int(data['id']) 
-              self.user.rooms.append(nowroom)
+              nowroom = copy.deepcopy(roomstruct())
+              nowroom.id = int(data['id'])
+              nowroom.nick = self.user.username
+              self.rooms.append(nowroom)
             
             self.send( self.rfc.RPL_JOIN, "#%s" %(data['id'].encode("utf8")) )
             self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'].encode("utf8"), data['topic'].encode("utf8")) )
@@ -476,7 +481,7 @@ class Chatujme:
       
       elif command == "NAMES":
         room_id = cmd[1].lstrip('#')
-        for room in self.user.rooms:
+        for room in self.rooms:
           if int(room_id) == int(room.id):
             getusers = self.getRoomUsers( room.id )
             users = ""
@@ -548,7 +553,7 @@ class Chatujme:
           for msg in msgx.split("\n"):
             if isPM:
               msg = "/m %s %s" % (cmd[1], msg)
-              r = self.user.rooms[0]
+              r = self.rooms[0]
               roomId = r.id
             else:
               roomId = cmd[1][1:]
@@ -582,11 +587,11 @@ class Chatujme:
         
       elif command == "QUIT" or command == "QUIT2":
         if command == "QUIT":
-          for room in self.user.rooms:
+          for room in self.rooms:
             self.part(room.id)
         else:
-          for r in self.user.rooms:
-            self.user.rooms.remove(r)
+          for r in self.rooms:
+            self.rooms.remove(r)
         self.parent.running = False
         self.connection = False
 
@@ -626,7 +631,7 @@ class SocketHandler(threading.Thread):
         log("Spojeni z %s uzavreno." %(self.address[0]))
         if traceback:
           traceback.print_exc()
-        for room in instance.user.rooms:
+        for room in instance.rooms:
           instance.part(room.id)
         instance.connection = False
         return False
