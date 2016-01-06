@@ -14,6 +14,7 @@
 
 import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib
 import traceback
+from pprint import pprint
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
@@ -73,7 +74,7 @@ class uzivatel:
   rooms = []
   me = "chatujme.cz"
   login = False
-  sex = "boys"
+  sex = "M"
   reading = False
   cookieJar = cookielib.LWPCookieJar(path + "/cookies.txt")
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
@@ -81,12 +82,21 @@ class uzivatel:
   timer = 5
   showSmiles = 1 #0 - Schovat, 1 - Text podoba, 2 - Url  
 
+class userInRoom:
+  nick = ""
+  sex = ""
+  
 class roomstruct:
   id = None
+  users = [ ]
   lastId = 0
   lastMess = ""
   firstLoad = True
 
+
+def dump(obj):
+  for attr in dir(obj):
+    print "obj.%s = %s" % (attr, getattr(obj, attr))
 
 class Collector (threading.Thread):
   def __init__ (self):
@@ -164,41 +174,54 @@ class getMessages (threading.Thread):
             msg = self.inst.cleanUrls( msg )
 
             if mess["typ"] == 0: #Public
-              self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+              self.inst.send(None, ":%s %s #%s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 1: #PM
-              self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
+              self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             elif mess["typ"] == 2: #System
               t = msg.replace("'","")
+
+              u = copy.deepcopy(userInRoom())
+
               if "vstoupil" in t or "vstoupila" in t:
-                nick = re.findall(r'.+\s(.+)\svstoupil', msg)[0]
-                self.inst.socket.send( ":%s %s #%s :%s\n" %( nick, self.inst.rfc.RPL_JOIN, room.id, msg )  )
+                ret = re.findall(r'.+\s(.+)\svstoupi(la|l)', msg)[0]
+                nick = ret[0]
+                u.nick = nick
+                print ret[1]
+                if ret[1] == "la":
+                  u.sex = "girls"
+                else:
+                  u.sex = "boys"
+                r = self.inst.isInRoom(room.id, True)
+                if r:
+                  r.users.append(u)
+                self.inst.send(None, ":%s %s #%s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_JOIN, room.id, msg )  )
 
               elif "odešel" in t or "odešla" in t:
                 nick = re.findall(r'.+\s(.+)\sode', msg)[0]
-                self.inst.socket.send( ":%s %s #%s :%s\n" % (nick, self.inst.rfc.RPL_PART, room.id, 'part')  )
+                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_PART, room.id, 'part')  )
 
               elif "odstran" in t:
                 nick = re.findall(r'.+el\s(.+)\sbyl\s', msg)[0]
-                self.inst.socket.send( ":%s %s #%s :%s\n" % (nick, self.inst.rfc.RPL_PART, room.id, 'timeout')  )
+                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
               elif "předal" in t or "předala" in t:
                 target = re.findall(r'.+správce\s(.+)$', msg)[0]
                 nick = re.findall(r'.+el\s(.+)\spředal', msg)[0]
-                self.inst.socket.send( ":%s %s #%s -h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, nick)  )
-                self.inst.socket.send( ":%s %s #%s +h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, target)  )
+                self.inst.send(None, ":%s %s #%s -h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, nick)  )
+                self.inst.send(None, ":%s %s #%s +h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, target)  )
                 self.inst.reloadUsers(room.id)
 
               else:
-                self.inst.socket.send( ":%s %s #%s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+                self.inst.send(None, ":%s %s #%s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 3: #WALL
               if self.inst.user.settingsShowPMFrom:
-                self.inst.socket.send( ":%s %s %s :[Z kanálu %s #%d ] %s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
+                self.inst.send(None, ":%s %s %s :[Z kanálu %s #%d ] %s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
               else:
-                self.inst.socket.send( ":%s %s %s :%s\n" %(mess['nick'].encode("utf8"), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
+                self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
         except:
-          #if traceback:
-          #  traceback.print_exc()
+          if traceback:
+            traceback.print_exc()
           time.sleep(1)
           pass
 
@@ -229,12 +252,23 @@ class Chatujme:
     self.connection = True
     self.parent = handler
     self.rfc = ircrfc()
-  
+    
   def cleanHighlight(self, msg):
     return re.sub("<span style='background:#eded1a'>([^<]+)</span>", "\\1", msg)
 
   def cleanUrls(self, msg):
     return re.sub('<a href="([^"]+)" target="_blank">([^<]+)</a>', "\\1", msg)
+  
+  def hash(self, nick, room_id):
+    try:
+      room = self.isInRoom(room_id, True);
+      for u in room.users:
+        if u.nick == nick:
+          return "%s!%s@%s" %(nick, nick, u.sex.encode("utf8"))
+    except:
+      if traceback:
+        traceback.print_exc()
+      return nick
   
   def cleanSmiles(self, msg):
     if self.user.showSmiles == 0:
@@ -266,7 +300,6 @@ class Chatujme:
       users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
     self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( rid, users ) )
     self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(rid) )
-    
   
   ''' Funkce na prihlaseni '''
   def checkLogin(self):
@@ -318,6 +351,16 @@ class Chatujme:
   def getRoomUsers(self, room_id):
     response = self.getUrl( "%s/%s?id=%s" %(self.system.url, "get-users", room_id) )
     data = json.loads(response)
+    
+    r = self.isInRoom(room_id, True)
+    if r:
+      r.users = [ ]
+      for user in data:
+        u = copy.deepcopy(userInRoom())
+        u.nick = user["nick"]
+        u.sex = user["sex"]
+        r.users.append(u)
+    
     return data
 
   # @todo Dodelat mody mistnosti
@@ -326,7 +369,7 @@ class Chatujme:
     if not croom == False:  
       self.user.rooms.remove(croom)
     try:
-      self.socket.send( ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
+      self.send(None, ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
     except:
       pass
     self.getUrl( "%s/%s?id=%s" %(self.system.url, "part", room_id) )
@@ -448,9 +491,9 @@ class Chatujme:
       
       elif command == "PING":
         if len(cmd) >= 2:
-          self.socket.send(":%s PONG :%s\n" % (self.user.me, cmd[1]))
+          self.send(None, ":%s PONG :%s\n" % (self.user.me, cmd[1]))
         else :
-          self.socket.send(":%s PONG %s\n" % (self.user.me, self.user.me))
+          self.send(None, ":%s PONG %s\n" % (self.user.me, self.user.me))
 
       elif command == "LIST":
         rooms = self.system.getRooms()
@@ -554,7 +597,9 @@ class Chatujme:
         
   def send(self, _id, msg):
     log("SENDING: %s -> %s" %(_id,msg))
-    if _id == "JOIN":
+    if _id == None:
+      self.socket.send(msg )
+    elif _id == "JOIN":
       self.socket.send(":%s %s %s\n"  %(self.user.username, _id, msg)  )
     elif _id == "PRIVMSG":
       self.socket.send(":%s %s %s\n" %(self.user.username, _id, msg))
