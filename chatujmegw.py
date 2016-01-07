@@ -20,7 +20,12 @@ sys.setdefaultencoding('utf8')
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
 version = 1.3
-path = os.path.dirname(__file__)
+
+try:
+  path = os.path.dirname(os.path.abspath(__file__))
+except NameError:  # We are the main py2exe script, not a module
+  path = os.path.dirname(os.path.abspath(sys.argv[0]))
+
 
 motd = ''':
                        
@@ -162,8 +167,8 @@ class getMessages (threading.Thread):
             if mess['nick'].lower() == self.inst.user.nick.lower():
               continue
             ''' Pri JOINu nechceme nacist zadne zpravy zpetne '''              
-            if not room.lastMess == "" and room.lastMess == mess['zprava']:
-              continue
+            #if not room.lastMess == "" and room.lastMess == mess['zprava']:
+            #  continue
 
             room.lastId = mess['id']
             room.lastMess = mess['zprava']
