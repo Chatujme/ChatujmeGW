@@ -19,7 +19,7 @@ setup(
   #packages = ['....', '....'],
   console = [{
       'script': 'chatujmegw.py'
-      #,"icon_resources": [(0, "")]
+      ,"icon_resources": [(0, "chatujme.ico")]
   }],
   options = {
       "py2exe": {
