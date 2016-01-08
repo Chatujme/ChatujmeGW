@@ -207,14 +207,16 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_PART, room.id, 'part')  )
 
               elif "odstran" in t:
-                nick = re.findall(r'.+el\s(.+)\sbyl\s', msg)[0]
+                nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
               elif "předal" in t or "předala" in t:
                 target = re.findall(r'.+správce\s(.+)$', msg)[0]
-                nick = re.findall(r'.+el\s(.+)\spředal', msg)[0]
-                self.inst.send(None, ":%s %s #%s -h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, nick)  )
-                self.inst.send(None, ":%s %s #%s +h %s\n" % (self.inst.user.me, self.inst.rfc.RPL_MODE, room.id, target)  )
+                nick = re.findall(r'.+e(lka|l)\s(.+)\spředa(l|la)\ssprávce\s(.+)', msg)[0]
+                target = nick[3]
+                nick = nick[1]
+                self.inst.send(None, ":%s %s #%s -h %s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(nick,room.id))  )
+                self.inst.send(None, ":%s %s #%s +h %s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(target,room.id))  )
                 self.inst.reloadUsers(room.id)
 
               else:
@@ -272,6 +274,7 @@ class Chatujme:
       for u in room.users:
         if u.nick == nick:
           return "%s!%s@%s" %(nick, nick, u.sex.encode("utf8"))
+      return nick
     except:
       if traceback:
         traceback.print_exc()
