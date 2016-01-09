@@ -11,7 +11,7 @@ setup(
   author = 'LuRy',
   author_email = 'lury@lury.cz',
   maintainer='LuRy',
-  maintainer_email='lury@llury.cz',
+  maintainer_email='lury@lury.cz',
   license = 'MIT',
   platforms = ["Windows"],
   url = 'http://lury.cz',
