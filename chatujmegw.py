@@ -274,7 +274,7 @@ class Chatujme:
       for u in room.users:
         if u.nick == nick:
           return "%s!%s@%s" %(nick, nick, u.sex.encode("utf8"))
-      return nick
+      return "%s!%s@%s" %(nick, nick, "unknow")
     except:
       if traceback:
         traceback.print_exc()
