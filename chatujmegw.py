@@ -538,17 +538,20 @@ class Chatujme:
 
       
       elif command == "NAMES":
-        room_id = cmd[1].lstrip('#')
-        for room in self.rooms:
-          if int(room_id) == int(room.id):
-            getusers = self.getRoomUsers( room.id )
-            users = ""
-            for user in getusers:
-              users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
-            self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( room.id, users ) )
-            self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room.id) )
-            return True
-        self.send(self.rfc.ERR_NOSUCHCHANNEL, "#%s :No such channel\n" % (room_id))
+        try:
+          room_id = cmd[1].lstrip('#')
+          for room in self.rooms:
+            if int(room_id) == int(room.id):
+              getusers = self.getRoomUsers( room.id )
+              users = ""
+              for user in getusers:
+                users = "%s%s%s " %(users, self.userOPStatus(user), user['nick'].encode("utf8") )
+              self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( room.id, users ) )
+              self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room.id) )
+              return True
+          self.send(self.rfc.ERR_NOSUCHCHANNEL, "#%s :No such channel\n" % (room_id))
+        except:
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( command ))
       
       elif command == "PING":
         if len(cmd) >= 2:
