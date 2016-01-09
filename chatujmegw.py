@@ -224,8 +224,8 @@ class getMessages (threading.Thread):
                 self.inst.send(None,":%s %s %s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, self.inst.hash(target,room.id), msg ))
               
               elif "odstraněn" in t:
-                nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
-                nick = nick[0]
+                nick = re.findall(r'.+e(lka|l)\s(.+)\sby(la|l)\s', msg)[0]
+                nick = nick[1]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
               elif "vykopnutý" in t:
