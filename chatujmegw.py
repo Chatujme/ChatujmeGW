@@ -206,7 +206,14 @@ class getMessages (threading.Thread):
                 nick = re.findall(r'.+\s(.+)\sode', msg)[0]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_PART, room.id, 'part')  )
 
-              elif "odstran" in t:
+              elif "smazal" in t:
+                nick = re.findall(r'(.+)\ssmazal', msg)[0]
+                self.inst.send(None, "")
+
+              elif "odstranil" in t:
+                nick = re.findall(r'')
+              
+              elif "odstraněn" in t:
                 nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
@@ -274,7 +281,7 @@ class Chatujme:
       for u in room.users:
         if u.nick == nick:
           return "%s!%s@%s" %(nick, nick, u.sex.encode("utf8"))
-      return "%s!%s@%s" %(nick, nick, "unknow")
+      return nick
     except:
       if traceback:
         traceback.print_exc()
