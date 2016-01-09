@@ -207,11 +207,14 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_PART, room.id, 'part')  )
 
               elif "smazal" in t:
-                nick = re.findall(r'(.+)\ssmazal', msg)[0]
-                self.inst.send(None, "")
+                nick = re.findall(r'ce\s(.+)\ssmazal', msg)[0]
+                self.inst.send(None, ":%s %s #%s :%s\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
 
               elif "odstranil" in t:
-                nick = re.findall(r'')
+                nick = re.findall(r'ce\s(.+)\sodstranil\szprávy\sod\s(.+)\sze', msg)[0]
+                target = nick[1]
+                nick = nick[0]
+                self.inst.send(None,":%s %s %s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, self.inst.hash(target,room.id), msg ))
               
               elif "odstraněn" in t:
                 nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
