@@ -233,9 +233,9 @@ class getMessages (threading.Thread):
               
               elif "vykopnut" in t:
                 nick = re.findall(r'(lka|l)\s(.+)\sby(la|l)\svykopnu(ta|t)\sz\smístnosti.\sVykop(l|nul)\s(jej|ji)\s(.+)\sz\sdůvodu:\s(.+).',msg)[0]
-                target = nick[6]
+                target = nick[1]
                 duvod = nick[7]
-                nick = nick[1]
+                nick = nick[6]
                 self.inst.send(None, ":%s %s #%s %s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_KICK, room.id, target, duvod ))
 
               elif "opět povolený" in t:
