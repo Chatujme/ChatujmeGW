@@ -19,7 +19,7 @@ sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
-version = 1.3
+version = 1.4
 
 try:
   path = os.path.dirname(os.path.abspath(__file__))

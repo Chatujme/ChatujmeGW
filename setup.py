@@ -6,7 +6,7 @@ import py2exe
 
 setup(
   name = 'ChatujmeGW IRC Gateway',
-  version = '1.3',
+  version = '1.4',
   description = 'IRC brana pro pristup k chatu Chatujme.cz',
   author = 'LuRy',
   author_email = 'lury@lury.cz',
