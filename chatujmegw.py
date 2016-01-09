@@ -14,6 +14,7 @@
 
 import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib
 import traceback
+#traceback = False
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
@@ -365,10 +366,12 @@ class Chatujme:
     elif data['code'] == 200: #Nove prihlaseni
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
       self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
+      log("Prihlasen user %s" %( self.user.username) )
       return True
     elif data['code'] == 201: #Uzivatel je jiz prihlasen podle cookies 
       self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
       self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
+      log("Prihlasen user %s" %( self.user.username) )
       return True 
     else:
       return False
@@ -522,6 +525,17 @@ class Chatujme:
         else:
           room_id = cmd[1].lstrip('#')
           self.part(room_id)
+          
+      elif command == "TOPIC":
+        room_id = cmd[1].lstrip('#')
+        try:
+          response = self.getUrl( "%s/%s?id=%d" %( self.system.url, "get-room", int(room_id) ) )
+          data = json.loads(response)
+          self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'], data['topic'].encode("utf8")) )
+        except:
+          if traceback:
+            traceback.print_exc()
+
       
       elif command == "NAMES":
         room_id = cmd[1].lstrip('#')
