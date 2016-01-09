@@ -108,31 +108,36 @@ class Collector (threading.Thread):
   def __init__ (self):
     threading.Thread.__init__(self)
     self.running = True
-    log("collector, init")
+    if traceback:
+      log("collector, init")
   def run (self):
-    log("collector, start")
+    if traceback:
+      log("collector, start")
     while self.running:
       vlaken = len(world.vlakna)
       for vlakno in world.vlakna:
         if not vlakno.isAlive() and vlakno._Thread__started.is_set():
           world.vlakna.remove(vlakno)
-          log("collector, purging %s" %(vlakno))
+          if traceback:
+            log("collector, purging %s" %(vlakno))
           del vlakno
           vlaken -= 1
-      log("collector, all clear (%s threads)" %(vlaken))
+      if traceback:
+        log("collector, all clear (%s threads)" %(vlaken))
       time.sleep(5)
     
     # shutdown
     for vlakno in world.vlakna:
       vlakno.running = False # shodim zbytek vlaken, aby se to vubec vyplo
-    log("collector, shutdown")
+    if traceback:
+      log("collector, shutdown")
   def start_threads (self):
     try:
       for vlakno in world.vlakna:
         if not vlakno._Thread__started.is_set():
           vlakno.start()
     except:
-      log("Vlakno odmita startovat, pravdepodobne dosla pamet.", 1)
+      log("Vlakno odmita startovat, pravdepodobne dosla pamet.")
 
 
 class getMessages (threading.Thread):
@@ -219,6 +224,7 @@ class getMessages (threading.Thread):
               
               elif "odstraněn" in t:
                 nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
+                nick = nick[0]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
 
               elif "vykopnutý" in t:
@@ -449,7 +455,11 @@ class Chatujme:
     for cmd_array in irccmd:
       cmd = string.split(cmd_array.strip(), " ")
       command = cmd[0].upper()
-      log("CMD %s" %( cmd))
+      if command == "":
+        continue
+
+      if traceback:
+        log("RECEIVING: %s" %( cmd))
       
       if command == "NICK":
         self.user.nick = cmd[1]
@@ -483,7 +493,8 @@ class Chatujme:
           inRoom = self.isInRoom(room)
           
           data = self.joinToRoom(room)
-          #log("JOIN to %s" %( room ))
+          if traceback:
+            log("JOIN to %s" %( room ))
           
           if data['code'] == 403:
             self.send( self.rfc.ERR_BANNEDFROMCHAN, "#%s :Cannot join channel" %( data['id'].encode("utf8") ) ) 
@@ -576,7 +587,8 @@ class Chatujme:
           text = "/m %s \xc2PING %s" % (cmd[1], cmd[3].replace("\x01","\xc2"))
         elif cmd[2].find("PONG") == 2:
           text = "/m %s \xc2PONG %s" % (cmd[1], cmd[3].replace("\x01","\xc2"))
-          log(text)
+          if traceback:
+            log(text)
         
         
         msg_len = 390
@@ -635,7 +647,8 @@ class Chatujme:
         self.send( self.rfc.ERR_UNKNOWNCOMMAND, ":%s Unknown command" %(cmd[0]) )
         
   def send(self, _id, msg):
-    log("SENDING: %s -> %s" %(_id,msg))
+    if traceback:
+      log("SENDING: %s -> %s" %(_id,msg))
     if _id == None:
       self.socket.send(msg )
     elif _id == "JOIN":
