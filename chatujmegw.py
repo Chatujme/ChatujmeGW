@@ -64,6 +64,7 @@ class ircrfc:
   RPL_JOIN = "JOIN"
   RPL_PART = "PART"
   RPL_MODE = "MODE"
+  RPL_KICK = "KICK"
   RPL_PRIVMSG = "PRIVMSG"
     
 
@@ -219,6 +220,20 @@ class getMessages (threading.Thread):
               elif "odstraněn" in t:
                 nick = re.findall(r'.+el\s(.+)\sby(la|l)\s', msg)[0]
                 self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
+
+              elif "vykopnutý" in t:
+                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
+              
+              elif "vykopnut" in t:
+                nick = re.findall(r'(lka|l)\s(.+)\sby(la|l)\svykopnu(ta|t)\sz\smístnosti.\sVykop(l|nul)\s(jej|ji)\s(.+)\sz\sdůvodu:\s(.+).',msg)[0]
+                target = nick[6]
+                duvod = nick[7]
+                nick = nick[1]
+                self.inst.send(None, ":%s %s #%s %s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_KICK, room.id, target, duvod ))
+
+              elif "opět povolený" in t:
+                nick = re.findall(r'el\s(.+)\smá',msg)[0]
+                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
 
               elif "předal" in t or "předala" in t:
                 target = re.findall(r'.+správce\s(.+)$', msg)[0]
@@ -434,7 +449,7 @@ class Chatujme:
     for cmd_array in irccmd:
       cmd = string.split(cmd_array.strip(), " ")
       command = cmd[0].upper()
-      #log("CMD %s" %( cmd[0]))
+      log("CMD %s" %( cmd))
       
       if command == "NICK":
         self.user.nick = cmd[1]
@@ -580,14 +595,17 @@ class Chatujme:
           
       elif command == "KICK":
         if len(cmd) == 3:
-          self.sendText("/kick " + cmd[2], cmd[1].lstrip('#')) # nick, room
+          self.sendText("/kick " + cmd[2], cmd[1].lstrip('#'), cmd[1].lstrip('#')) # nick, room
+          self.send(None, ":%s %s #%s %s :%s\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], "" ))
         elif len(cmd) > 3:
           if not cmd[3].startswith(":"):
             cmd[3] = ":%s" % (cmd[3])
           reason = ' '.join(cmd[3:])[1:] # dvojtecku nechceme
-          self.sendText("/kick %s %s" % (cmd[2], reason), cmd[1].lstrip('#')) # nick, room
+          self.sendText("/kick %s %s" % (cmd[2], reason), cmd[1].lstrip('#'), cmd[1].lstrip('#')) # nick, room
+          self.send(None, ":%s %s #%s %s :%s\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], reason ))
         else:
           self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\n" % ("KICK"))
+          
       
       elif command == "SET" and len(cmd) >= 2:
         message = None
