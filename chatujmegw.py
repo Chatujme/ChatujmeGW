@@ -98,6 +98,10 @@ class uzivatel:
   urlfetcher = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar), urllib2.HTTPSHandler(debuglevel=1))
   settingsShowPMFrom = True
   timer = 5
+  idler_enable = False
+  idler_timer = 2400 #40min
+  idler_text = [ ".", "..", "Jsem AFK" ]
+#  idler_lastsend = 0
   showSmiles = 1 #0 - Schovat, 1 - Text podoba, 2 - Url  
 
 class userInRoom:
@@ -111,6 +115,7 @@ class roomstruct:
   lastId = 0
   lastMess = ""
   firstLoad = True
+  idler_lastsend= 0
 
 
 def dump(obj):
@@ -277,11 +282,17 @@ class getMessages (threading.Thread):
           time.sleep(1)
           pass
 
+        myTime = time.time()
+        if (myTime - room.idler_lastsend) >= self.inst.user.idler_timer and self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
+          self.inst.send(None,":%s %s #%s :Odeslan idler [ %s ]\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, room.idler_lastsend ))
+          room.idler_lastsend = time.time()
+          self.inst.sendText( random.choice( self.inst.user.idler_text ), room.id, room.id)
+
       ''' Pri JOINu nacteme seznam uzivatelu '''              
       if room.firstLoad:          
         self.inst.reloadUsers(room.id)
         room.firstLoad = False
-        
+
       time.sleep(self.inst.user.timer)
     
 
@@ -524,6 +535,7 @@ class Chatujme:
               nowroom = copy.deepcopy(roomstruct())
               nowroom.id = int(data['id'])
               nowroom.nick = self.user.username
+              nowroom.idler_lastsend = time.time()
               self.rooms.append(nowroom)
             
             self.send( self.rfc.RPL_JOIN, "#%s" %(data['id'].encode("utf8")) )
@@ -629,9 +641,14 @@ class Chatujme:
               msg = "/m %s %s" % (cmd[1], msg)
               r = self.rooms[0]
               roomId = r.id
+              r.idler_lastsend = time.time()
             else:
               roomId = cmd[1][1:]
-              
+
+            for room in self.rooms:
+              if room.id == cmd[1][1:]:
+                room.idler_lastsend = time.time()
+
             data = self.sendText( msg, roomId, cmd[1] )
           
       elif command == "KICK":
@@ -656,7 +673,33 @@ class Chatujme:
             self.user.timer = num
             message = "Prodleva mezi aktualizacemi nastavena na %s sekund." % (num)
           except:
-            message = "SET TIMER cislo - nastaveni prodlevy mezi aktializaci chatu, aktualni hodnota: %s" % (self.kernel.timer)
+            message = "SET TIMER cislo - nastaveni prodlevy mezi aktializaci chatu, aktualni hodnota: %s" % (self.user.timer)
+        
+        if cmd[1].upper() == "IDLER_TIMER":
+          try:
+            num = int(cmd[2])
+            if self.user.idler_enable:
+              if num < 1800:
+                message = "Udrzovac nelze nastavit pod 1800 vterin (30min)"
+              else:
+                self.user.idler_timer = num
+                message = "Udrzovac nastaven na %s sekund." % (num)
+            else:
+                message = "Idler neni zapnuty, pouzijte nejdrive prosim /SET IDLER_ENABLE 1"
+          except:
+            message = "SET IDLER_TIMER cislo - nastaveni prodlevy udrzovacich vet, aktualni hodnota: %s" % (self.user.idler_timer)
+
+        if cmd[1].upper() == "IDLER_ENABLE":
+          try:
+            num = int(cmd[2])
+            if num == 1:
+              self.user.idler_enable = True
+              message = "Idler aktivován."
+            else:
+              self.user.idler_enable = False
+              message = "Idler deaktivován."
+          except:
+            message = "SET IDLER_ENABLE 1|0 - aktivace idleru, aktualni hodnota: %s" % (self.user.idler_enable)
         
         if message:
           self.send(self.rfc.RPL_NOTICE, ":%s" %(message) )
