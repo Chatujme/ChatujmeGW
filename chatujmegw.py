@@ -578,6 +578,10 @@ class Chatujme:
           self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( command ))
       
       elif command == "PING":
+        try:
+          self.getUrl( "%s/%s" %(self.system.url, "ping") )
+        except:
+          pass
         if len(cmd) >= 2:
           self.send(None, ":%s PONG :%s\n" % (self.user.me, cmd[1]))
         else :
