@@ -456,10 +456,10 @@ class Chatujme:
   def userOPStatus(self, user):
     if user['isOwner']:
       return "@"
-    elif user['isHalfOP']:
-      return "%"
     elif user['isOP']:
       return "@"
+    elif user['isHalfOP']:
+      return "%"
     elif user['sex'] == "girls":
       return "+"
     else:
