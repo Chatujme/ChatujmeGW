@@ -12,15 +12,27 @@
   rfc https://tools.ietf.org/html/rfc1459
 """
 
-import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib
-import traceback
-#traceback = False
+import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
 version = 1.4
+
+parser = argparse.ArgumentParser(description='ChatujmeGW - v'+str(version))
+parser.add_argument('--port',type=int, help="Default port 6667")
+parser.add_argument('--listen',help="Bind gateway. Default 0.0.0.0")
+parser.add_argument('--debug',help="Debug/Verbose print", type=int)
+args = parser.parse_args()
+if args.port:
+  PORT = args.port
+if args.listen:
+  BIND = args.listen
+if args.debug:
+  import traceback
+else:
+  traceback = False
 
 try:
   path = os.path.dirname(os.path.abspath(__file__))
