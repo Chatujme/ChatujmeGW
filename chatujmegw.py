@@ -18,7 +18,7 @@ sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
-version = 1.4
+version = 1.5
 
 parser = argparse.ArgumentParser(description='ChatujmeGW - v'+str(version))
 parser.add_argument('--port',type=int, help="Default port 6667")
