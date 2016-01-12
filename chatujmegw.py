@@ -679,7 +679,7 @@ class Chatujme:
           try:
             num = int(cmd[2])
             if self.user.idler_enable:
-              if num < 1800:
+              if num <= 1800:
                 message = "Udrzovac nelze nastavit pod 1800 vterin (30min)"
               else:
                 self.user.idler_timer = num
