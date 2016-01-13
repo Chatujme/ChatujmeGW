@@ -808,7 +808,8 @@ class SocketHandler(threading.Thread):
     self.running = True
   def run (self):
     log("Prijato spojeni z %s" % (self.address[0]))
-    instance = Chatujme(self.socket, self.address[0], self);    
+    instance = Chatujme(self.socket, self.address[0], self);
+    instance.send(None,":%s %s %s: %s\n" %(instance.user.me, instance.rfc.RPL_NOTICE, instance.user.me,"Připojeno z %s, čekám na přihlášení." % (self.address[0]) ))    
 
     while self.running:
       timestamp = int(time.time())
