@@ -552,16 +552,25 @@ class Chatujme:
         log("RECEIVING: %s" %( cmd))
       
       if command == "NICK":
+        if self.user.login:
+          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          continue
         self.user.nick = cmd[1]
         if self.user.password != "":
           self.user.login = self.checkLogin()
          
       elif command == "USER":
+        if self.user.login:
+          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          continue
         self.user.username = cmd[1]
         if self.user.password != "":
           self.user.login = self.checkLogin()
          
       elif command == "PASS":
+        if self.user.login:
+          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          continue
         self.user.password = cmd[1]
         if self.user.username == "":
           self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.user.me))
