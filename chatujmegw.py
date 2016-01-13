@@ -300,7 +300,7 @@ class getMessages (threading.Thread):
             
         except:
           
-            previousTraceback = traceback.print_exc()
+            previousTraceback = traceback
             try:
 
               # If user part from another device/webchat
