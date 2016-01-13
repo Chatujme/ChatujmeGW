@@ -12,17 +12,14 @@
   rfc https://tools.ietf.org/html/rfc1459
 """
 
-import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse, platform
+import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
 version = 1.6
-try:
-  ua = 'ChatujmeGW/v%s (%s %s %s; %s; Machine %s) Python %s' %(str(version), platform.system(), os.name, platform.version(), platform.machine(), platform.node(),platform.python_version() )
-except:
-  ua = 'ChatujmeGW/v%s' %( str(version) )
+ua = 'ChatujmeGW/v%s (%s %s) Python %s' %(str(version), sys.platform, os.name, sys.version.split(" ")[0] )
 
 parser = argparse.ArgumentParser(description='ChatujmeGW - v'+str(version))
 parser.add_argument('--port',type=int, help="Default port 6667")
