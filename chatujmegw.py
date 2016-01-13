@@ -267,7 +267,6 @@ class getMessages (threading.Thread):
                 nick = re.findall(r'(lka|l)\s(.+)\sby(la|l)\svykopnu(ta|t)\sz\smístnosti.\sVykop(l|nul)\s(jej|ji)\s(.+)\sz\sdůvodu:\s(.*?)\.$',msg)[0]
                 target = nick[1]
                 duvod = nick[7]
-                print "'"+duvod+"'"
                 if not nick[7]:
                   duvod = "Důvod nebyl zadán"
                 else:
