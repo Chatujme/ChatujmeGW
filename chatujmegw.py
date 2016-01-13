@@ -333,13 +333,15 @@ class getMessages (threading.Thread):
                   print previousTraceback.print_exc()
                 if traceback:
                   print data
+            
             except:
               if traceback and previousTraceback:
                 print previousTraceback.print_exc()
               if traceback:
                 traceback.print_exc()
               pass 
-        time.sleep(1)
+            time.sleep(1)
+            pass
 
         myTime = time.time()
         if (myTime - room.idler_lastsend) >= self.inst.user.idler_timer and self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
