@@ -1,0 +1,13 @@
+# Ukazka soubru pro prikaz LOAD mujnick.txt respketive /quote load mujnick.txt
+# Prihlaseni 
+USER mujnick
+NICK mujnick
+PASS mojeheslo
+# Nastaveni nacitani skla na 5s
+SET TIMER 5
+# Zapnuti idleru po 40min
+SET IDLER_ENABLE 1
+# Prihlaseni do mistnosti 20404 (Boti na Chatujme.cz)
+JOIN #20404
+# Po prichodu napise zpravu do mistnosti
+PRIVMSG #20404 Ahoj jsem tu *1*
