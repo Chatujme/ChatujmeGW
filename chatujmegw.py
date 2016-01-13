@@ -12,13 +12,17 @@
   rfc https://tools.ietf.org/html/rfc1459
 """
 
-import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse
+import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse, platform
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
 version = 1.6
+try:
+  ua = 'ChatujmeGW/v%s (%s %s %s; %s; Machine %s) Python %s' %(str(version), platform.system(), os.name, platform.version(), platform.machine(), platform.node(),platform.python_version() )
+except:
+  ua = 'ChatujmeGW/v%s' %( str(version) )
 
 parser = argparse.ArgumentParser(description='ChatujmeGW - v'+str(version))
 parser.add_argument('--port',type=int, help="Default port 6667")
@@ -323,11 +327,12 @@ class getMessages (threading.Thread):
 
 
 class ChatujmeSystem:
-  def __init__ (self):
+  def __init__ (self, parent):
     self.url = "http://api.chatujme.cz/irc"
+    self.parent = parent
   def getRooms(self):
-    response = urllib2.urlopen( "%s/%s" %(self.url, "get-rooms") )
-    data = json.loads(response.read())
+    response = self.parent.getUrl( "%s/%s" %(self.url, "get-rooms") )
+    data = json.loads(response)
     return data
     
 
@@ -336,7 +341,7 @@ class Chatujme:
     self.socket = mySocket
     self.adress = myAdress
     self.user = copy.deepcopy(uzivatel())
-    self.system = ChatujmeSystem()
+    self.system = ChatujmeSystem(self)
     self.connection = True
     self.rooms = [ ]
     self.parent = handler
@@ -372,12 +377,14 @@ class Chatujme:
 
   ''' Funkce na GET '''
   def getUrl(self, url):
+    self.user.urlfetcher.addheaders = [('User-agent', ua)]
     response = self.user.urlfetcher.open(url)
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
   
   ''' Funkce na POST '''
   def postUrl(self, url, postdata):
+    self.user.urlfetcher.addheaders = [('User-agent', ua)]
     response = self.user.urlfetcher.open(url , data=postdata)
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
