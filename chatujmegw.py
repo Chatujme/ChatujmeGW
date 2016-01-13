@@ -735,6 +735,7 @@ class Chatujme:
       
       elif command == "SET" and len(cmd) >= 2:
         message = None
+        
         if cmd[1].upper() == "TIMER":
           try:
             num = int(cmd[2])
@@ -769,6 +770,33 @@ class Chatujme:
           except:
             message = "SET IDLER_ENABLE 1|0 - aktivace idleru, aktualni hodnota: %s" % (self.user.idler_enable)
         
+        if message:
+          self.send(self.rfc.RPL_NOTICE, ":%s" %(message) )
+
+      elif command == "LOAD":
+        try:
+          filename = cmd[1]
+          f = open(filename, "r")
+          
+          for line in f:
+            l=line.strip()
+            if l.startswith("#"):
+              continue
+            timestamp = time.time()
+            log("Nastavuji %s" %(l))
+            self.parse(l, timestamp)
+          f.close()
+          message = "Nastaveni ze souboru %s nacteno" %(filename)
+        except:
+          if traceback and verboseThreads:
+            traceback.print_exc()
+          try:
+            if cmd[1]:
+              message = "Soubor nebyl %s neexistuje nebo ho nelze nacist" %(cmd[1])
+          except:
+            message = "Soubor nebyl zadan"
+          
+
         if message:
           self.send(self.rfc.RPL_NOTICE, ":%s" %(message) )
         
