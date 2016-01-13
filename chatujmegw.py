@@ -25,14 +25,22 @@ parser.add_argument('--port',type=int, help="Default port 6667")
 parser.add_argument('--listen',help="Bind gateway. Default 0.0.0.0")
 parser.add_argument('--debug',help="Debug/Verbose print", type=int)
 args = parser.parse_args()
+
+verboseThreads = False
 if args.port:
   PORT = args.port
 if args.listen:
   BIND = args.listen
 if args.debug:
   import traceback
+  if args.debug == 2:
+    verboseThreads = True
 else:
   traceback = False
+
+#force debug
+#import traceback
+
 
 try:
   path = os.path.dirname(os.path.abspath(__file__))
@@ -127,21 +135,25 @@ class Collector (threading.Thread):
     threading.Thread.__init__(self)
     self.running = True
     if traceback:
-      log("collector, init")
+      if verboseThreads:
+        log("collector, init")
   def run (self):
     if traceback:
-      log("collector, start")
+      if verboseThreads:
+        log("collector, start")
     while self.running:
       vlaken = len(world.vlakna)
       for vlakno in world.vlakna:
         if not vlakno.isAlive() and vlakno._Thread__started.is_set():
           world.vlakna.remove(vlakno)
           if traceback:
-            log("collector, purging %s" %(vlakno))
+            if verboseThreads:
+              log("collector, purging %s" %(vlakno))
           del vlakno
           vlaken -= 1
       if traceback:
-        log("collector, all clear (%s threads)" %(vlaken))
+        if verboseThreads:
+          log("collector, all clear (%s threads)" %(vlaken))
       time.sleep(5)
     
     # shutdown
@@ -284,6 +296,10 @@ class getMessages (threading.Thread):
         except:
           if traceback:
             traceback.print_exc()
+            try:
+              print data
+            except:
+              pass 
           time.sleep(1)
           pass
 
