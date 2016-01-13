@@ -299,14 +299,47 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
         except:
-          if traceback:
-            traceback.print_exc()
+          
+            previousTraceback = traceback.print_exc()
             try:
-              print data
+
+              # If user part from another device/webchat
+              if data['code'] == "403":
+                self.inst.send(None, ":%s %s #%s\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
+                log("Odchod %s z mistnosti z jineho umisteni" %(user.inst.user.username))
+                self.inst.part(room.id)
+                continue
+              # If user session expired
+              elif data['code'] == "401":
+                self.inst.user.login = False
+                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login. Příhlášení expirovalo.." ))
+                if self.inst.user.username == "":
+                  self.inst.send(self.inst.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.inst.user.me))
+                elif self.inst.user.nick == "":
+                  self.inst.send(self.inst.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /NICK" % (self.inst.user.me))
+                else:
+                  self.inst.user.login = self.inst.checkLogin()
+                
+                if not self.inst.user.login:
+                  self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login se nezdařil.." ))
+                  log("Pokus o prihlaseni %s se nezdaril, cekam 10s" %(self.inst.user.username))
+                  time.sleep(10)
+                else:
+                  self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login byl úspěšný" ))
+                  log("Pokus o prihlaseni %s se zdaril" %(self.inst.user.username))
+
+              else: # Neznamy stav..
+                if traceback and previousTraceback:
+                  print previousTraceback.print_exc()
+                if traceback:
+                  print data
             except:
+              if traceback and previousTraceback:
+                print previousTraceback.print_exc()
+              if traceback:
+                traceback.print_exc()
               pass 
-          time.sleep(1)
-          pass
+        time.sleep(1)
 
         myTime = time.time()
         if (myTime - room.idler_lastsend) >= self.inst.user.idler_timer and self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
