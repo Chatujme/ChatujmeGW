@@ -633,7 +633,7 @@ class Chatujme:
               self.rooms.append(nowroom)
             
             self.send( self.rfc.RPL_JOIN, "#%s" %(data['id'].encode("utf8")) )
-            self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'].encode("utf8"), data['topic'].encode("utf8")) )
+            self.send( self.rfc.RPL_TOPIC, "#%s :[%s] %s" %(data['id'].encode("utf8"), data['nazev'].encode("utf8"), data['topic'].encode("utf8")) )
             self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( data['id'].encode("utf8"), users ) )
             self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room) )
          
