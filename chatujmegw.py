@@ -192,6 +192,8 @@ class getMessages (threading.Thread):
           response = self.inst.getUrl( "%s/%s?id=%s&from=%d" %(self.inst.system.url, "get-messages", room.id, int(room.lastId) ) )
           data = json.loads(response)
         except:
+          if traceback:
+            traceback.print_exc()
           data = { 'mess' : [ ] }
 
         try:
@@ -310,9 +312,14 @@ class getMessages (threading.Thread):
             try:
 
               # If user part from another device/webchat
-              if data['code'] == "403":
+              if data['code'] == "404":
                 self.inst.send(None, ":%s %s #%s\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
-                log("Odchod %s z mistnosti z jineho umisteni" %(user.inst.user.username))
+                log("Odchod %s z mistnosti z jineho umisteni" %(self.inst.user.username))
+                self.inst.part(room.id)
+                continue
+              elif data['code'] == "403": #Kicked
+                self.inst.send(None, ":%s %s #%s\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
+                log("Odchod %s z mistnosti z jineho umisteni" %(self.inst.user.username))
                 self.inst.part(room.id)
                 continue
               # If user session expired
