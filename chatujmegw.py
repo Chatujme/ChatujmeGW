@@ -192,8 +192,8 @@ class getMessages (threading.Thread):
           response = self.inst.getUrl( "%s/%s?id=%s&from=%d" %(self.inst.system.url, "get-messages", room.id, int(room.lastId) ) )
           data = json.loads(response)
         except:
-          if traceback:
-            traceback.print_exc()
+          #if traceback:
+          #  traceback.print_exc()
           data = { 'mess' : [ ] }
 
         try:
