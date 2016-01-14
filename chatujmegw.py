@@ -240,8 +240,14 @@ class getMessages (threading.Thread):
                 self.inst.send(None, ":%s %s #%s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_JOIN, room.id, msg )  )
 
               elif "odešel" in t or "odešla" in t:
-                nick = re.findall(r'.+\s(.+)\sode', msg)[0]
-                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_PART, room.id, 'part')  )
+                nick = re.findall(r'.+\s(.+)\s(odešel|odešla)', msg)[0]
+                msg = re.sub(r'(.*?):\s*','',msg)
+                partmess = "part"
+                if nick[1] == "odešel":
+                  partmess = "Odesel"
+                if nick[1] == "odešla":
+                  partmess = "Odesla"
+                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick[0],room.id), self.inst.rfc.RPL_PART, room.id, partmess)  )
 
               elif "smazal" in t:
                 nick = re.findall(r'ce\s(.+)\ssmazal', msg)[0]
@@ -300,7 +306,7 @@ class getMessages (threading.Thread):
             
         except:
           
-            previousTraceback = traceback
+            previousTraceback = sys.exc_info()
             try:
 
               # If user part from another device/webchat
@@ -330,14 +336,22 @@ class getMessages (threading.Thread):
 
               else: # Neznamy stav..
                 if traceback and previousTraceback:
-                  print previousTraceback.print_exc()
+                  print "----- Previous -----"
+                  exc_type, exc_value, exc_traceback = previousTraceback
+                  traceback.print_exception(exc_type, exc_value, exc_traceback) 
                 if traceback:
+                  print "----- This -----"
+                  traceback.print_exc()
+                  print "----- Data -----"
                   print data
             
             except:
               if traceback and previousTraceback:
-                print previousTraceback.print_exc()
+                print "----- Previous -----"
+                exc_type, exc_value, exc_traceback = previousTraceback
+                traceback.print_exception(exc_type, exc_value, exc_traceback) 
               if traceback:
+                print "----- This -----"
                 traceback.print_exc()
               pass 
             time.sleep(1)
