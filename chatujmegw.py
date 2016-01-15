@@ -266,7 +266,7 @@ class getMessages (threading.Thread):
               elif "odstraněn" in t:
                 nick = re.findall(r'.+e(lka|l)\s(.+)\sby(la|l)\s', msg)[0]
                 nick = nick[1]
-                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'timeout')  )
+                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'Neaktivni')  )
 
               elif "vykopnutý" in t:
                 msg = re.sub(r'(.*?):\s*','',msg)
