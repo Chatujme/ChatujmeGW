@@ -63,6 +63,7 @@ MM.          MM    MM
                          
 '''
 motd = motd.replace('\n', '\r\n')
+
 class ircrfc:
   RPL_WELCOME = "001"
   RPL_ENDOFMOTD = 376
@@ -765,6 +766,9 @@ class Chatujme:
       
       elif command == "SET" and len(cmd) >= 2:
         message = None
+
+        if cmd[1].upper() == "NOMOTD":
+          motd = "%s@%s | v%s";
         
         if cmd[1].upper() == "TIMER":
           try:
