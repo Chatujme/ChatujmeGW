@@ -63,8 +63,6 @@ MM.          MM    MM
                          
 '''
 
-motd = 'test chatujme %s@%s v%s'
-
 class ircrfc:
   RPL_WELCOME = "001"
   RPL_ENDOFMOTD = 376
