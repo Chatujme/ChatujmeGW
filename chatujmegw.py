@@ -62,7 +62,7 @@ MM.          MM    MM
 
                          
 '''
-
+motd = motd.replace('\n', '\r\n')
 class ircrfc:
   RPL_WELCOME = "001"
   RPL_ENDOFMOTD = 376
