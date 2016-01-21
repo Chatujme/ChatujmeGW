@@ -63,6 +63,8 @@ MM.          MM    MM
                          
 '''
 
+motd = 'test chatujme %s@%s v%s'
+
 class ircrfc:
   RPL_WELCOME = "001"
   RPL_ENDOFMOTD = 376
@@ -220,9 +222,9 @@ class getMessages (threading.Thread):
             msg = self.inst.cleanUrls( msg )
 
             if mess["typ"] == 0: #Public
-              self.inst.send(None, ":%s %s #%s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+              self.inst.send(None, ":%s %s #%s :%s\r\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 1: #PM
-              self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
+              self.inst.send(None, ":%s %s %s :%s\r\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             elif mess["typ"] == 2: #System
               t = msg.replace("'","")
 
@@ -239,7 +241,7 @@ class getMessages (threading.Thread):
                 r = self.inst.isInRoom(room.id, True)
                 if r:
                   r.users.append(u)
-                self.inst.send(None, ":%s %s #%s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_JOIN, room.id, msg )  )
+                self.inst.send(None, ":%s %s #%s :%s\r\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_JOIN, room.id, msg )  )
 
               elif "odešel" in t or "odešla" in t:
                 nick = re.findall(r'.+\s(.+)\s(odešel|odešla)', msg)[0]
@@ -249,28 +251,28 @@ class getMessages (threading.Thread):
                   partmess = "Odesel"
                 if nick[1] == "odešla":
                   partmess = "Odesla"
-                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick[0],room.id), self.inst.rfc.RPL_PART, room.id, partmess)  )
+                self.inst.send(None, ":%s %s #%s :%s\r\n" % (self.inst.hash(nick[0],room.id), self.inst.rfc.RPL_PART, room.id, partmess)  )
 
               elif "smazal" in t:
                 nick = re.findall(r'ce\s(.+)\ssmazal', msg)[0]
                 msg = re.sub(r'(.*?):\s*','',msg)
-                self.inst.send(None, ":%s %s #%s :%s\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
+                self.inst.send(None, ":%s %s #%s :%s\r\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
 
               elif "odstranil" in t:
                 nick = re.findall(r'ce\s(.+)\sodstranil\szprávy\sod\s(.+)\sze', msg)[0]
                 target = nick[1]
                 nick = nick[0]
                 msg = re.sub(r'(.*?):\s*','',msg)
-                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
+                self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
               
               elif "odstraněn" in t:
                 nick = re.findall(r'.+e(lka|l)\s(.+)\sby(la|l)\s', msg)[0]
                 nick = nick[1]
-                self.inst.send(None, ":%s %s #%s :%s\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'Neaktivni')  )
+                self.inst.send(None, ":%s %s #%s :%s\r\n" % (self.inst.hash(nick, room.id), self.inst.rfc.RPL_PART, room.id, 'Neaktivni')  )
 
               elif "vykopnutý" in t:
                 msg = re.sub(r'(.*?):\s*','',msg)
-                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
+                self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
               
               elif "vykopnut" in t:
                 nick = re.findall(r'(lka|l)\s(.+)\sby(la|l)\svykopnu(ta|t)\sz\smístnosti.\sVykop(l|nul)\s(jej|ji)\s(.+)\sz\sdůvodu:\s(.*?)\.$',msg)[0]
@@ -281,30 +283,30 @@ class getMessages (threading.Thread):
                 else:
                   duvod = nick[7]
                 nick = nick[6]
-                self.inst.send(None, ":%s %s #%s %s :%s\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_KICK, room.id, target, duvod ))
+                self.inst.send(None, ":%s %s #%s %s :%s\r\n" %( self.inst.hash(nick,room.id), self.inst.rfc.RPL_KICK, room.id, target, duvod ))
 
               elif "opět povolený" in t:
                 nick = re.findall(r'el\s(.+)\smá',msg)[0]
                 msg = re.sub(r'(.*?):\s*','',msg)
-                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
+                self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, msg ))
 
               elif "předal" in t or "předala" in t:
                 target = re.findall(r'.+správce\s(.+)$', msg)[0]
                 nick = re.findall(r'.+e(lka|l)\s(.+)\spředa(l|la)\ssprávce\s(.+)', msg)[0]
                 target = nick[3]
                 nick = nick[1]
-                self.inst.send(None, ":%s %s #%s -h %s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(nick,room.id))  )
-                self.inst.send(None, ":%s %s #%s +h %s\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(target,room.id))  )
+                self.inst.send(None, ":%s %s #%s -h %s\r\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(nick,room.id))  )
+                self.inst.send(None, ":%s %s #%s +h %s\r\n" % (self.inst.hash(nick,room.id), self.inst.rfc.RPL_MODE, room.id, self.inst.hash(target,room.id))  )
                 self.inst.reloadUsers(room.id)
 
               else:
                 msg = re.sub(r'(.*?):\s*','',msg)
-                self.inst.send(None, ":%s %s #%s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
+                self.inst.send(None, ":%s %s #%s :%s\r\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, room.id, msg) )
             elif mess["typ"] == 3: #WALL
               if self.inst.user.settingsShowPMFrom:
-                self.inst.send(None, ":%s %s %s :[Z kanálu %s #%d ] %s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
+                self.inst.send(None, ":%s %s %s :[Z kanálu %s #%d ] %s\r\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), mess['rname'].encode("utf8"), mess['rid'], msg) )
               else:
-                self.inst.send(None, ":%s %s %s :%s\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
+                self.inst.send(None, ":%s %s %s :%s\r\n" %(self.inst.hash(mess['nick'].encode("utf8"),room.id), self.inst.rfc.RPL_PRIVMSG, mess["komu"].encode("utf8"), msg) )
             
         except:
           
@@ -313,19 +315,19 @@ class getMessages (threading.Thread):
 
               # If user part from another device/webchat
               if data['code'] == "404":
-                self.inst.send(None, ":%s %s #%s\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
+                self.inst.send(None, ":%s %s #%s\r\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
                 log("Odchod %s z mistnosti z jineho umisteni" %(self.inst.user.username))
                 self.inst.part(room.id)
                 continue
               elif data['code'] == "403": #Kicked
-                self.inst.send(None, ":%s %s #%s\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
+                self.inst.send(None, ":%s %s #%s\r\n" %( self.inst.user.me, self.inst.rfc.RPL_PART, room.id ))
                 log("Odchod %s z mistnosti z jineho umisteni" %(self.inst.user.username))
                 self.inst.part(room.id)
                 continue
               # If user session expired
               elif data['code'] == "401":
                 self.inst.user.login = False
-                self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login. Příhlášení expirovalo.." ))
+                self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login. Příhlášení expirovalo.." ))
                 if self.inst.user.username == "":
                   self.inst.send(self.inst.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.inst.user.me))
                 elif self.inst.user.nick == "":
@@ -334,11 +336,11 @@ class getMessages (threading.Thread):
                   self.inst.user.login = self.inst.checkLogin()
                 
                 if not self.inst.user.login:
-                  self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login se nezdařil.." ))
+                  self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login se nezdařil.." ))
                   log("Pokus o prihlaseni %s se nezdaril, cekam 10s" %(self.inst.user.username))
                   time.sleep(10)
                 else:
-                  self.inst.send(None,":%s %s #%s :%s\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login byl úspěšný" ))
+                  self.inst.send(None,":%s %s #%s :%s\r\n" %(self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, "Pokus o re-login byl úspěšný" ))
                   log("Pokus o prihlaseni %s se zdaril" %(self.inst.user.username))
 
               else: # Neznamy stav..
@@ -366,7 +368,7 @@ class getMessages (threading.Thread):
 
         myTime = time.time()
         if (myTime - room.idler_lastsend) >= self.inst.user.idler_timer and self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
-          self.inst.send(None,":%s %s #%s :Odeslan idler [ %s ]\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, room.idler_lastsend ))
+          self.inst.send(None,":%s %s #%s :Odeslan idler [ %s ]\r\n" %( self.inst.user.me, self.inst.rfc.RPL_NOTICE, room.id, room.idler_lastsend ))
           room.idler_lastsend = time.time()
           self.inst.sendText( random.choice( self.inst.user.idler_text ), room.id, room.id)
 
@@ -521,7 +523,7 @@ class Chatujme:
     if not croom == False:  
       self.rooms.remove(croom)
     try:
-      self.send(None, ":%s %s #%s :\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
+      self.send(None, ":%s %s #%s :\r\n" %( self.user.nick, self.rfc.RPL_PART, room_id ) )
     except:
       pass
     self.getUrl( "%s/%s?id=%s" %(self.system.url, "part", room_id) )
@@ -574,30 +576,30 @@ class Chatujme:
       
       if command == "NICK":
         if self.user.login:
-          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          self.send(None,":%s %s %s: %s\r\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
           continue
         self.user.nick = cmd[1]
-        if self.user.password != "":
+        if self.user.password != "" and self.user.username != "":
           self.user.login = self.checkLogin()
          
       elif command == "USER":
         if self.user.login:
-          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          self.send(None,":%s %s %s: %s\r\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
           continue
         self.user.username = cmd[1]
-        if self.user.password != "":
+        if self.user.password != "" and self.user.login != "":
           self.user.login = self.checkLogin()
          
       elif command == "PASS":
         if self.user.login:
-          self.send(None,":%s %s %s: %s\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
+          self.send(None,":%s %s %s: %s\r\n" %(self.user.me, self.rfc.RPL_NOTICE, self.user.username,"Uživatel %s je již přihlášen" % (self.user.username) ))
           continue
         self.user.password = cmd[1]
-        if self.user.username == "":
-          self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.user.me))
-        elif self.user.nick == "":
-          self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /NICK" % (self.user.me))
-        else:
+        #if self.user.username == "":
+        #  self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /USER" % (self.user.me))
+        #elif self.user.nick == "":
+        #  self.send(self.rfc.ERR_NOLOGIN, "%s: User not logged in. Use /NICK" % (self.user.me))
+        if self.user.password != "" and self.user.login != "" and self.user.username != "":
           self.user.login = self.checkLogin()
          
       elif command == "JOIN":
@@ -639,7 +641,7 @@ class Chatujme:
          
       elif command == "PART":
         if len(cmd) < 2:
-          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( command ))
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\r\n" % ( command ))
         else:
           room_id = cmd[1].lstrip('#')
           self.part(room_id)
@@ -667,9 +669,9 @@ class Chatujme:
               self.send( self.rfc.RPL_NAMREPLY, "= #%s :%s" %( room.id, users ) )
               self.send( self.rfc.RPL_ENDOFNAMES, "#%s :End of /NAMES list" %(room.id) )
               return True
-          self.send(self.rfc.ERR_NOSUCHCHANNEL, "#%s :No such channel\n" % (room_id))
+          self.send(self.rfc.ERR_NOSUCHCHANNEL, "#%s :No such channel\r\n" % (room_id))
         except:
-          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\n" % ( command ))
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\r\n" % ( command ))
       
       elif command == "PING":
         try:
@@ -677,9 +679,9 @@ class Chatujme:
         except:
           pass
         if len(cmd) >= 2:
-          self.send(None, ":%s PONG :%s\n" % (self.user.me, cmd[1]))
+          self.send(None, ":%s PONG :%s\r\n" % (self.user.me, cmd[1]))
         else :
-          self.send(None, ":%s PONG %s\n" % (self.user.me, self.user.me))
+          self.send(None, ":%s PONG %s\r\n" % (self.user.me, self.user.me))
 
       elif command == "LIST":
         rooms = self.system.getRooms()
@@ -734,7 +736,7 @@ class Chatujme:
         msgArray = [text[i:i+msg_len] for i in range(0, len(text), msg_len)]
         
         for msgx in msgArray:
-          for msg in msgx.split("\n"):
+          for msg in msgx.split("\r\n"):
             if isPM:
               msg = "/m %s %s" % (cmd[1], msg)
               r = self.rooms[0]
@@ -752,15 +754,15 @@ class Chatujme:
       elif command == "KICK":
         if len(cmd) == 3:
           self.sendText("/kick " + cmd[2], cmd[1].lstrip('#'), cmd[1].lstrip('#')) # nick, room
-          self.send(None, ":%s %s #%s %s :%s\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], "" ))
+          self.send(None, ":%s %s #%s %s :%s\r\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], "" ))
         elif len(cmd) > 3:
           if not cmd[3].startswith(":"):
             cmd[3] = ":%s" % (cmd[3])
           reason = ' '.join(cmd[3:])[1:] # dvojtecku nechceme
           self.sendText("/kick %s %s" % (cmd[2], reason), cmd[1].lstrip('#'), cmd[1].lstrip('#')) # nick, room
-          self.send(None, ":%s %s #%s %s :%s\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], reason ))
+          self.send(None, ":%s %s #%s %s :%s\r\n" %( self.hash(self.user.username,cmd[1].lstrip('#')), self.rfc.RPL_KICK, cmd[1].lstrip('#'), cmd[2], reason ))
         else:
-          self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\n" % ("KICK"))
+          self.send(self.rfc.ERR_NEEDMOREPARAMS ,"%s :Not enough parameters\r\n" % ("KICK"))
           
       
       elif command == "SET" and len(cmd) >= 2:
@@ -778,7 +780,7 @@ class Chatujme:
           try:
             num = int(cmd[2])
             if self.user.idler_enable:
-              if num <= 1800:
+              if num <= 10:
                 message = "Udrzovac nelze nastavit pod 1800 vterin (30min)"
               else:
                 self.user.idler_timer = num
@@ -787,6 +789,17 @@ class Chatujme:
                 message = "Idler neni zapnuty, pouzijte nejdrive prosim /SET IDLER_ENABLE 1"
           except:
             message = "SET IDLER_TIMER cislo - nastaveni prodlevy udrzovacich vet, aktualni hodnota: %s" % (self.user.idler_timer)
+
+        if cmd[1].upper() == "IDLER_STRING":
+          try:
+            text = cmd[2:]
+            if self.user.idler_enable:
+                self.user.idler_text = " ".join(text).split("|")
+                message = "Udrzovac retezec nastaven na '%s'." % (" ".join(text))
+            else:
+                message = "Idler neni zapnuty, pouzijte nejdrive prosim /SET IDLER_ENABLE 1"
+          except:
+            message = "SET IDLER_STRING Prvni idler|Druhy idler - nastaveni textu udrzovacich vet, aktualni hodnota: %s" % ("|".join(self.user.idler_text))
 
         if cmd[1].upper() == "IDLER_ENABLE":
           try:
@@ -850,11 +863,11 @@ class Chatujme:
     if _id == None:
       self.socket.send(msg )
     elif _id == "JOIN":
-      self.socket.send(":%s %s %s\n"  %(self.user.username, _id, msg)  )
+      self.socket.send(":%s %s %s\r\n"  %(self.user.username, _id, msg)  )
     elif _id == "PRIVMSG":
-      self.socket.send(":%s %s %s\n" %(self.user.username, _id, msg))
+      self.socket.send(":%s %s %s\r\n" %(self.user.username, _id, msg))
     else:
-      self.socket.send(":%s %s %s %s\n"  %(self.user.me, _id, self.user.nick, msg)  )
+      self.socket.send(":%s %s %s %s\r\n"  %(self.user.me, _id, self.user.nick, msg)  )
     
 
 
@@ -867,7 +880,7 @@ class SocketHandler(threading.Thread):
   def run (self):
     log("Prijato spojeni z %s" % (self.address[0]))
     instance = Chatujme(self.socket, self.address[0], self);
-    instance.send(None,":%s %s %s: %s\n" %(instance.user.me, instance.rfc.RPL_NOTICE, instance.user.me,"Připojeno z %s, čekám na přihlášení." % (self.address[0]) ))    
+    instance.send(None,":%s %s %s: %s\r\n" %(instance.user.me, instance.rfc.RPL_NOTICE, instance.user.me,"Připojeno z %s, čekám na přihlášení." % (self.address[0]) ))    
 
     while self.running:
       timestamp = int(time.time())
