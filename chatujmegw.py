@@ -95,6 +95,8 @@ class world:
   vlakna = []
   collector = None
 
+world.motd = motd
+
 class uzivatel:
   username = ""
   nick = ""
@@ -473,12 +475,12 @@ class Chatujme:
       self.send(self.rfc.ERR_NOLOGIN, "%s: %s" % (self.user.username, data['message'].encode("utf8") ) )
       return False
     elif data['code'] == 200: #Nove prihlaseni
-      self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
+      self.send( self.rfc.RPL_WELCOME, world.motd %( self.user.username, self.user.me, version ))
       self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
       log("Prihlasen user %s" %( self.user.username) )
       return True
     elif data['code'] == 201: #Uzivatel je jiz prihlasen podle cookies 
-      self.send( self.rfc.RPL_WELCOME, motd %( self.user.username, self.user.me, version ))
+      self.send( self.rfc.RPL_WELCOME, world.motd %( self.user.username, self.user.me, version ))
       self.send( self.rfc.RPL_ENDOFMOTD, ":End of MOTD" )
       log("Prihlasen user %s" %( self.user.username) )
       return True 
@@ -768,7 +770,7 @@ class Chatujme:
         message = None
 
         if cmd[1].upper() == "NOMOTD":
-          motd = "%s@%s | v%s";
+          world.motd = "%s@%s | v%s";
         
         if cmd[1].upper() == "TIMER":
           try:
