@@ -83,6 +83,7 @@ class ircrfc:
   RPL_ENDOFWHO = 315
   RPL_NAMREPLY = 353
   RPL_ENDOFNAMES = 366
+  RPL_USERHOST = 302
   RPL_NOTICE = "NOTICE"
   RPL_JOIN = "JOIN"
   RPL_PART = "PART"
@@ -518,6 +519,12 @@ class Chatujme:
     
     return data
 
+  def get_external_ip(self):
+    site = urllib.urlopen("http://checkip.dyndns.org/").read()
+    grab = re.findall('([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', site)
+    address = grab[0]
+    return address
+
   # @todo Dodelat mody mistnosti
   def part(self,room_id):
     croom = self.isInRoom(room_id, True) 
@@ -846,6 +853,16 @@ class Chatujme:
 
         if message:
           self.send(self.rfc.RPL_NOTICE, ":%s" %(message) )
+        
+      elif command == "USERHOST":
+        try:
+          nick = cmd[1]
+          if nick == self.user.username:
+            self.send( self.rfc.RPL_USERHOST, "%s=+~%s@%s " %( nick,nick, self.get_external_ip() ) )
+          else:
+            self.send( self.rfc.RPL_USERHOST, "%s=+~%s@%s " %( nick,nick, self.user.me ) )
+        except:
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\r\n" % ( command ))
         
         
       elif command == "QUIT" or command == "QUIT2":
