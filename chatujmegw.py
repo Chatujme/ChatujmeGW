@@ -652,7 +652,7 @@ class Chatujme:
         try:
           response = self.getUrl( "%s/%s?id=%d" %( self.system.url, "get-room", int(room_id) ) )
           data = json.loads(response)
-          self.send( self.rfc.RPL_TOPIC, "#%s :%s" %(data['id'], data['topic'].encode("utf8")) )
+          self.send( self.rfc.RPL_TOPIC, "#%s :[%s] %s" %(data['id'], data['nazev'].encode("utf8"), data['topic'].encode("utf8")) )
         except:
           if traceback:
             traceback.print_exc()
