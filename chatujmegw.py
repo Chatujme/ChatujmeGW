@@ -73,6 +73,7 @@ class ircrfc:
   RPL_LISTEND = 323
   RPL_TOPIC = 332
   RPL_NOTOPIC = 331
+  ERR_NOSUCHNICK = 401
   ERR_NOSUCHCHANNEL = 403
   ERR_UNKNOWNCOMMAND = 421
   ERR_NEEDMOREPARAMS = 461
@@ -84,6 +85,12 @@ class ircrfc:
   RPL_NAMREPLY = 353
   RPL_ENDOFNAMES = 366
   RPL_USERHOST = 302
+  RPL_WHOISUSER = 311
+  RPL_WHOISCHANNELS = 319
+  RPL_WHOISSERVER = 312
+  RPL_WHOISHOST = 378
+  RPL_WHOISIDLE = 317
+  RPL_ENDOFWHOIS = 318  
   RPL_NOTICE = "NOTICE"
   RPL_JOIN = "JOIN"
   RPL_PART = "PART"
@@ -865,6 +872,21 @@ class Chatujme:
             self.send( self.rfc.RPL_USERHOST, "%s=+~%s@%s " %( nick,nick, self.get_external_ip() ) )
           else:
             self.send( self.rfc.RPL_USERHOST, "%s=+~%s@%s " %( nick,nick, self.user.me ) )
+        except:
+          self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\r\n" % ( command ))
+        
+      elif command == "WHOIS":
+        try:
+          nick = cmd[1]
+          self.send( None, ":%s %s %s %s ~%s %s * :%s\r\n" %(self.user.me, self.rfc.RPL_WHOISUSER, self.user.username, nick, nick, self.user.me, nick) ) 
+          
+          #@todo Where room
+          #self.send( None, ":%s %s %s %s :#%s\r\n" %(self.user.me, self.rfc.RPL_WHOISCHANNELS, self.user.username, nick, ),
+          #
+          #@todo Not online/exist 
+          #self.send( None, ":%s %s %s %s :No such nick/channel\r\n" %(self.user.me, self.rfc.ERR_NOSUCHNICK, self.user.username, nick ),
+          self.send ( self.rfc.RPL_ENDOFWHOIS ,"End of /WHOIS list.")
+          
         except:
           self.send( self.rfc.ERR_NEEDMOREPARAMS, "%s :Not enough parameters\r\n" % ( command ))
         
