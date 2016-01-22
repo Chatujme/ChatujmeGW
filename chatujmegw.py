@@ -221,6 +221,7 @@ class getMessages (threading.Thread):
 
             msg = self.inst.cleanHighlight(mess['zprava'].encode("utf8"))
             msg = self.inst.cleanSmiles( msg )
+            msg = self.inst.cleanUrlsMailto( msg )
             msg = self.inst.cleanUrls( msg )
 
             if mess["typ"] == 0: #Public
@@ -409,6 +410,9 @@ class Chatujme:
 
   def cleanUrls(self, msg):
     return re.sub('<a href="([^"]+)" target="_blank">([^<]+)</a>', "\\1", msg)
+  
+  def cleanUrlsMailto(self, msg):
+    return re.sub('<a href="mailto:([^"]+)">([^<]+)</a>', "\\1", msg)
   
   def hash(self, nick, room_id):
     try:
