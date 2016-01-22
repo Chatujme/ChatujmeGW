@@ -55,14 +55,14 @@ motd = ''':
   .g8"""bgd` MM             Vitam te na Chatujme.cz
 .dP'     `M  MM             Prihlasen jako %s@%s
 dM'       `  MMpMMMb.  
-MM           MM    MM       Verze brány %s  
+MM           MM    MM       Verze brany %s  
 MM.          MM    MM       
 `Mb.     ,'  MM    MM  
   `"bmmmd' .JMML  JMML.
 
                          
 '''
-motd = motd.replace('\n', '\r\n')
+motd = motd.replace("\n", "\r\n")
 
 class ircrfc:
   RPL_WELCOME = "001"
@@ -713,18 +713,22 @@ class Chatujme:
         self.send(self.rfc.RPL_CHANNELMODEIS, "%s +%s" % ( cmd[1], "tn" ))
 
       elif command == "WHO": # @todo Fixnout /WHO
-        users = self.getRoomUsers( cmd[1].lstrip('#') )
-        for user in users:
-          self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H :0 %s" 
-          %( 
-              cmd[1].lstrip('#'), 
-              user['nick'].encode("utf8"), 
-              user['sex'].encode("utf8"), 
-              self.user.me, 
-              user['nick'].encode("utf8"), 
-              user['nick'].encode("utf8")
-          ))
-        self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
+        if str(cmd[1].lstrip('#')).isdigit():
+          users = self.getRoomUsers( cmd[1].lstrip('#') )
+          for user in users:
+            self.send( self.rfc.RPL_WHOREPLY, "#%s %s %s %s %s H :0 %s" 
+            %( 
+                cmd[1].lstrip('#'), 
+                user['nick'].encode("utf8"), 
+                user['sex'].encode("utf8"), 
+                self.user.me, 
+                user['nick'].encode("utf8"), 
+                user['nick'].encode("utf8")
+            ))
+          self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
+        else:
+          self.send( self.rfc.RPL_ENDOFWHO, ":End of /WHO list." )
+        
       
       elif command == "PRIVMSG" or command == "NOTICE" and len(cmd[2]) > 0:
         
@@ -960,6 +964,7 @@ class SocketHandler(threading.Thread):
 
 
 def log(text):
+  text = text.replace("\r", "").replace("\n","$@$").replace("$@$","\r\n")
   print "[%s] %s" % (time.strftime('%Y/%m/%d %H:%M:%S'), text)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
