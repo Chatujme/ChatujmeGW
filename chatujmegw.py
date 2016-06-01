@@ -446,14 +446,28 @@ class Chatujme:
   ''' Funkce na GET '''
   def getUrl(self, url):
     self.user.urlfetcher.addheaders = [('User-agent', ua)]
-    response = self.user.urlfetcher.open(url)
+    try:
+      response = self.user.urlfetcher.open(url)
+    except:
+      self.send( self.rfc.RPL_NOTICE, ":Doslo k problemu v pripojeni.. Cekam 10s a opakuji..." )
+      time.sleep(10)
+      if traceback:
+        traceback.print_exc()
+      return self.getUrl(url)
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
   
   ''' Funkce na POST '''
   def postUrl(self, url, postdata):
     self.user.urlfetcher.addheaders = [('User-agent', ua)]
-    response = self.user.urlfetcher.open(url , data=postdata)
+    try:
+      response = self.user.urlfetcher.open(url , data=postdata)
+    except:
+      self.send( self.rfc.RPL_NOTICE, ":Doslo k problemu v pripojeni.. Cekam 10s a opakuji..." )
+      time.sleep(10)
+      if traceback:
+        traceback.print_exc()
+      return self.postUrl(url, postdata)
     self.user.cookieJar.save(ignore_discard=True)
     return response.read()
   
