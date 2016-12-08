@@ -19,7 +19,7 @@ sys.setdefaultencoding('utf8')
 
 PORT = 6667 #Default IRC port
 BIND = "0.0.0.0" #Bind to all IP
-version = 1.9
+version = "1.9.1"
 ua = 'ChatujmeGW/v%s (%s %s) Python %s' %(str(version), sys.platform, os.name, sys.version.split(" ")[0] )
 
 parser = argparse.ArgumentParser(description='ChatujmeGW - v'+str(version))

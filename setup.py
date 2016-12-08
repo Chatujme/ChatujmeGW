@@ -17,7 +17,7 @@ sys.argv.append("--dll-excludes=%s" % ",".join(dll_excludes))
 
 setup(
   name = 'ChatujmeGW IRC Gateway',
-  version = '1.9',
+  version = '1.9.1',
   description = 'IRC brana pro pristup k chatu Chatujme.cz',
   author = 'LuRy',
   author_email = 'lury@lury.cz',
