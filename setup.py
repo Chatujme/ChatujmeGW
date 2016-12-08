@@ -3,6 +3,17 @@
 # encoding=utf8  
 from distutils.core import setup
 import py2exe
+import sys
+
+dll_excludes = [
+    # don't import these - otherwise win7 created *.exe won't work in winXP
+    # http://stackoverflow.com/questions/1979486/py2exe-win32api-pyc-importerror-dll-load-failed
+    "mswsock.dll",
+    "powrprof.dll",
+    "crypt32.dll"
+]
+sys.argv.append("--dll-excludes=%s" % ",".join(dll_excludes))
+
 
 setup(
   name = 'ChatujmeGW IRC Gateway',
@@ -30,3 +41,4 @@ setup(
       } 
     }
 )
+             

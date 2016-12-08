@@ -13,6 +13,7 @@
 """
 
 import copy, os, re, socket, string, sys, threading, time, urllib, urllib2, random, json, cookielib, argparse
+import ssl
 reload(sys)  
 sys.setdefaultencoding('utf8')
 
