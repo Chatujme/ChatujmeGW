@@ -93,9 +93,9 @@ class IRC_RFC:
 # MOTD lines (without empty lines for RFC compliance)
 MOTD_LINES = [
     "  .g8\"\"\"bgd` MM             Vitam te na Chatujme.cz",
-    ".dP'     `M  MM             Prihlasen jako %s@%s",
+    ".dP'     `M  MM             Prihlasen jako {user}@{host}",
     "dM'       `  MMpMMMb.",
-    "MM           MM    MM       Verze brany %s",
+    "MM           MM    MM       Verze brany {version}",
     "MM.          MM    MM",
     "`Mb.     ,'  MM    MM",
     "  `\"bmmmd' .JMML  JMML.",
@@ -466,7 +466,12 @@ class Chatujme:
 
     def check_login(self):
         if not self.user.username or not self.user.nick or not self.user.password:
+            if DEBUG:
+                log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}, pass={'*' * len(self.user.password) if self.user.password else 'None'}")
             return False
+
+        if DEBUG:
+            log(f"[LOGIN] Attempting login for {self.user.username}")
 
         # Create user-specific cookie file
         cookie_path = os.path.join(PATH, f"cookies_{self.user.username}.txt")
@@ -475,18 +480,26 @@ class Chatujme:
             urllib.request.HTTPCookieProcessor(self.user.cookie_jar)
         )
 
-        postdata = f"username={self.user.username}&password={self.user.password}"
-        response = self.post_url(f"{self.system.url}/check-login", postdata)
-        data = json.loads(response)
+        try:
+            postdata = f"username={self.user.username}&password={self.user.password}"
+            response = self.post_url(f"{self.system.url}/check-login", postdata)
+            if DEBUG:
+                log(f"[LOGIN] API response: {response[:200]}")
+            data = json.loads(response)
 
-        if data['code'] == 401:
-            self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{data['message']}")
+            if data['code'] == 401:
+                self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{data['message']}")
+                return False
+            elif data['code'] in (200, 201):
+                self.send_welcome()
+                log(f"Prihlasen user {self.user.username}")
+                return True
             return False
-        elif data['code'] in (200, 201):
-            self.send_welcome()
-            log(f"Prihlasen user {self.user.username}")
-            return True
-        return False
+        except Exception as e:
+            log(f"[LOGIN] Error: {e}")
+            if DEBUG:
+                tb.print_exc()
+            return False
 
     def send_welcome(self):
         """Send proper RFC-compliant welcome sequence"""
@@ -504,7 +517,7 @@ class Chatujme:
         # MOTD
         self.send(self.rfc.RPL_MOTDSTART, f":- {self.user.me} Message of the Day -")
         for line in MOTD_LINES:
-            formatted = line % (self.user.username, self.user.me, VERSION) if '%s' in line else line
+            formatted = line.format(user=self.user.username, host=self.user.me, version=VERSION)
             self.send(self.rfc.RPL_MOTD, f":- {formatted}")
         self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
 
@@ -755,8 +768,8 @@ class Chatujme:
             self.send_raw(f":{self.user.me} CAP * NAK :{caps}\r\n")
         elif subcmd == "END":
             self.cap_negotiating = False
-            # If we have credentials, try to login
-            if self.user.password and self.user.nick and self.user.username:
+            # If we have credentials and not already logged in, try to login
+            if not self.user.login and self.user.password and self.user.nick and self.user.username:
                 self.user.login = self.check_login()
 
     def handle_join(self, room):
@@ -819,8 +832,14 @@ class SocketHandler(threading.Thread):
             timestamp = int(time.time())
             try:
                 ircdata = instance.socket.recv(2 ** 13).decode('utf-8', errors='replace')
+                if DEBUG:
+                    log(f"[RECV] {repr(ircdata)}")
                 result = instance.parse(ircdata, timestamp)
+                if DEBUG:
+                    log(f"[PARSE] result={result}, login={instance.user.login}, nick={instance.user.nick}")
                 if result == 2:
+                    if DEBUG:
+                        log("[PARSE] Breaking due to result=2")
                     break
             except Exception as e:
                 log(f"Spojeni z {self.address[0]} uzavreno: {e}")
