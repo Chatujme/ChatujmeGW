@@ -546,12 +546,29 @@ class Chatujme:
 
         return data
 
-    def part(self, room_id):
+    def part(self, room_id, send_to_client=True):
         croom = self.is_in_room(room_id, True)
         if croom:
             self.rooms.remove(croom)
-        self.send_raw(f":{self.user.nick} PART #{room_id}\r\n")
-        self.get_url(f"{self.system.url}/part?id={room_id}")
+        if send_to_client:
+            self.send_raw(f":{self.user.nick} PART #{room_id}\r\n")
+        # Always try to notify server about leaving
+        try:
+            self.get_url_no_retry(f"{self.system.url}/part?id={room_id}")
+        except Exception as e:
+            if DEBUG:
+                log(f"[PART] Error notifying server: {e}")
+
+    def get_url_no_retry(self, url):
+        """Get URL without retry on failure - used for disconnect cleanup"""
+        self.user.url_fetcher.addheaders = [('User-agent', UA)]
+        try:
+            response = self.user.url_fetcher.open(url, timeout=5)
+            return response.read().decode('utf-8')
+        except Exception as e:
+            if DEBUG:
+                log(f"[GET_NO_RETRY] {url} failed: {e}")
+            raise
 
     def user_op_status(self, user):
         if user.get('isOwner') or user.get('isOP'):
@@ -744,8 +761,9 @@ class Chatujme:
                     self.send(self.rfc.RPL_USERHOST, f"{nick}=+~{nick}@{self.user.me}")
 
             elif command == "QUIT":
+                # Leave all rooms - don't send PART back to client (they're quitting)
                 for room in self.rooms[:]:
-                    self.part(room.id)
+                    self.part(room.id, send_to_client=False)
                 self.parent.running = False
                 self.connection = False
 
@@ -845,8 +863,9 @@ class SocketHandler(threading.Thread):
                 log(f"Spojeni z {self.address[0]} uzavreno: {e}")
                 if DEBUG:
                     tb.print_exc()
+                # Leave all rooms on disconnect - don't send to client (already disconnected)
                 for room in instance.rooms[:]:
-                    instance.part(room.id)
+                    instance.part(room.id, send_to_client=False)
                 instance.connection = False
                 break
 
