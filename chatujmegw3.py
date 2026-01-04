@@ -215,11 +215,11 @@ class GetMessages(threading.Thread):
                         log(f"[GET-MSGS] #{room.id}: code={data.get('code', 'N/A')} mess_count={len(data.get('mess', []))}")
 
                     # Check if API returned an error code (kicked from room)
-                    if 'code' in data and data['code'] != 200:
-                        error_code = data.get('code', 0)
-                        error_msg = data.get('message', 'Unknown error')
-                        # 403 = kicked/banned from room
+                    if 'code' in data:
+                        error_code = int(data.get('code', 0))
+                        # 403 = kicked/banned from room, 404 = room doesn't exist
                         if error_code in (403, 404):
+                            error_msg = data.get('message', 'Unknown error')
                             if DEBUG:
                                 log(f"[KICKED] Removed from #{room.id}: {error_msg}")
                             self.inst.send_raw(
