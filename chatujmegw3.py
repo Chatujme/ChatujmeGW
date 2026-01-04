@@ -800,6 +800,9 @@ class Chatujme:
         if data['code'] == 403:
             self.send(self.rfc.ERR_BANNEDFROMCHAN, f"#{data['id']} :Cannot join channel")
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data['message']}\r\n")
+        elif data['code'] == 404:
+            self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room} :No such channel")
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data.get('message', 'Room does not exist')}\r\n")
         elif data['code'] == 200:
             users_data = self.get_room_users(room)
             users = " ".join([f"{self.user_op_status(u)}{u['nick']}" for u in users_data])
