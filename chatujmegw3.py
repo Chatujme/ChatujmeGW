@@ -433,10 +433,14 @@ class Chatujme:
         if self.user.show_smiles == 0:
             pattern = ""
         elif self.user.show_smiles == 1:
-            pattern = r"\3"
+            # Extract smile ID and display as *ID*
+            pattern = r"*\2*"
         else:
             pattern = r"\1"
-        return re.sub(r"<img src='(.+?smiles/([^.]+).gif)' alt='(.+?)'>", pattern, msg)
+        # Updated regex to handle new API format with aria-label and title attributes
+        # Old format: <img src='url' alt='text'>
+        # New format: <img src='url' alt='text' aria-label='desc' title='desc'>
+        return re.sub(r"<img src='(.+?smiles/([^.]+).gif)' alt='(.+?)'[^>]*>", pattern, msg)
 
     def get_url(self, url):
         self.user.url_fetcher.addheaders = [('User-agent', UA)]
