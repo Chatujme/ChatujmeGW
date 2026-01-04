@@ -147,7 +147,7 @@ class RoomStruct:
 
 def log(text):
     text = str(text).replace("\r", "").replace("\n", " | ")
-    print(f"[{time.strftime('%Y/%m/%d %H:%M:%S')}] {text}")
+    print(f"[{time.strftime('%Y/%m/%d %H:%M:%S')}] {text}", flush=True)
 
 
 class Collector(threading.Thread):
@@ -203,12 +203,34 @@ class GetMessages(threading.Thread):
             if not self.inst.connection:
                 return
 
-            for room in self.inst.rooms:
+            for room in self.inst.rooms[:]:  # Copy list to allow modification during iteration
                 try:
                     response = self.inst.get_url(
                         f"{self.inst.system.url}/get-messages?id={room.id}&from={int(room.last_id)}"
                     )
                     data = json.loads(response)
+
+                    # Debug: log every API response structure
+                    if DEBUG >= 2:
+                        log(f"[GET-MSGS] #{room.id}: code={data.get('code', 'N/A')} mess_count={len(data.get('mess', []))}")
+
+                    # Check if API returned an error code (kicked from room)
+                    if 'code' in data and data['code'] != 200:
+                        error_code = data.get('code', 0)
+                        error_msg = data.get('message', 'Unknown error')
+                        # 403 = kicked/banned from room
+                        if error_code in (403, 404):
+                            if DEBUG:
+                                log(f"[KICKED] Removed from #{room.id}: {error_msg}")
+                            self.inst.send_raw(
+                                f":{self.inst.user.me} KICK #{room.id} {self.inst.user.nick} :{error_msg}\r\n"
+                            )
+                            # Remove from rooms list directly (part will fail since we're banned)
+                            croom = self.inst.is_in_room(room.id, True)
+                            if croom:
+                                self.inst.rooms.remove(croom)
+                                self.inst.send_raw(f":{self.inst.user.nick} PART #{room.id}\r\n")
+                        continue
                 except Exception:
                     if DEBUG:
                         tb.print_exc()
@@ -216,12 +238,17 @@ class GetMessages(threading.Thread):
 
                 try:
                     for mess in data.get('mess', []):
+                        if DEBUG >= 2:
+                            log(f"[API MSG] id={mess['id']} typ={mess['typ']} nick={mess['nick']} msg={mess['zprava'][:50]}...")
                         if int(room.last_id) >= int(mess['id']):
                             continue
-                        if mess['nick'].lower() == self.inst.user.username.lower():
-                            continue
-                        if mess['nick'].lower() == self.inst.user.nick.lower():
-                            continue
+                        # Skip messages from ourselves, but NOT system messages (typ 2)
+                        # System messages should always be processed (kicks, joins, etc.)
+                        if mess["typ"] != 2:
+                            if mess['nick'].lower() == self.inst.user.username.lower():
+                                continue
+                            if mess['nick'].lower() == self.inst.user.nick.lower():
+                                continue
 
                         room.last_id = mess['id']
                         room.last_mess = mess['zprava']
@@ -243,6 +270,8 @@ class GetMessages(threading.Thread):
                                 f":{self.inst.make_hostmask(mess['nick'], room.id)} PRIVMSG {mess['komu']} :{msg}\r\n"
                             )
                         elif mess["typ"] == 2:  # System
+                            if DEBUG:
+                                log(f"[SYSTEM MSG] nick={mess['nick']} msg={msg}")
                             self.handle_system_message(mess, msg, room)
                         elif mess["typ"] == 3:  # WALL
                             if self.inst.user.settings_show_pm_from:
@@ -331,6 +360,10 @@ class GetMessages(threading.Thread):
                 self.inst.send_raw(
                     f":{self.inst.make_hostmask(kicker, room.id)} KICK #{room.id} {target} :{duvod}\r\n"
                 )
+                # If the kicked user is us, leave the room
+                if target.lower() == self.inst.user.username.lower() or target.lower() == self.inst.user.nick.lower():
+                    log(f"We were kicked from #{room.id} by {kicker}: {duvod}")
+                    self.inst.part(room.id)
             except Exception:
                 if DEBUG:
                     tb.print_exc()
@@ -802,12 +835,18 @@ class Chatujme:
             log(f"JOIN to {room}: {data}")
 
         if data['code'] == 403:
-            self.send(self.rfc.ERR_BANNEDFROMCHAN, f"#{data['id']} :Cannot join channel")
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data['message']}\r\n")
+            # Banned from channel - send both RFC error and NOTICE with detailed message
+            ban_msg = data.get('message', 'Cannot join channel')
+            self.send(self.rfc.ERR_BANNEDFROMCHAN, f"#{data.get('id', room)} :Cannot join channel (+b)")
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{ban_msg}\r\n")
         elif data['code'] == 404:
             self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room} :No such channel")
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data.get('message', 'Room does not exist')}\r\n")
-        elif data['code'] == 200:
+        elif data['code'] != 200:
+            # Unknown error code - show as notice
+            err_msg = data.get('message', f'Unknown error (code {data["code"]})')
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error joining #{room}: {err_msg}\r\n")
+        else:
             users_data = self.get_room_users(room)
             users = " ".join([f"{self.user_op_status(u)}{u['nick']}" for u in users_data])
 
