@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-  IRC Brana pro chat na Chatujme.cz
-  Projekt vychazi z lidegw v46 ( http://sourceforge.net/projects/lidegw/ )
+  IRC Gateway for Chatujme.cz chat
+  Based on lidegw v46 ( http://sourceforge.net/projects/lidegw/ )
 
-  Refaktorovano pro Python 3 a RFC kompatibilitu
+  Refactored for Python 3 and RFC compliance
 
   @license MIT
   @author LuRy <lury@lury.cz>, <lury@chatujme.cz>
@@ -36,7 +36,7 @@ if sys.platform == 'win32':
 
 PORT = 6667
 BIND = "0.0.0.0"
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 parser = argparse.ArgumentParser(description=f'ChatujmeGW - v{VERSION}')
@@ -98,10 +98,10 @@ class IRC_RFC:
 
 # MOTD lines (without empty lines for RFC compliance)
 MOTD_LINES = [
-    "  .g8\"\"\"bgd` MM             Vitam te na Chatujme.cz",
-    ".dP'     `M  MM             Prihlasen jako {user}@{host}",
+    "  .g8\"\"\"bgd` MM             Welcome to Chatujme.cz",
+    ".dP'     `M  MM             Logged in as {user}@{host}",
     "dM'       `  MMpMMMb.",
-    "MM           MM    MM       Verze brany {version}",
+    "MM           MM    MM       Gateway version {version}",
     "MM.          MM    MM",
     "`Mb.     ,'  MM    MM",
     "  `\"bmmmd' .JMML  JMML.",
@@ -130,7 +130,7 @@ class User:
         self.timer = 5
         self.idler_enable = False
         self.idler_timer = 2400  # 40min
-        self.idler_text = [".", "..", "Jsem AFK"]
+        self.idler_text = [".", "..", "AFK"]
         self.show_smiles = 1  # 0 - Hide, 1 - Text, 2 - URL
 
 
@@ -162,36 +162,36 @@ class Collector(threading.Thread):
         self.running = True
         self.daemon = True
         if DEBUG and VERBOSE_THREADS:
-            log("collector, init")
+            log("Collector initialized")
 
     def run(self):
         if DEBUG and VERBOSE_THREADS:
-            log("collector, start")
+            log("Collector started")
         while self.running:
-            vlaken = len(World.vlakna)
-            for vlakno in World.vlakna[:]:
-                if not vlakno.is_alive() and vlakno._started.is_set():
-                    World.vlakna.remove(vlakno)
+            thread_count = len(World.vlakna)
+            for thread in World.vlakna[:]:
+                if not thread.is_alive() and thread._started.is_set():
+                    World.vlakna.remove(thread)
                     if DEBUG and VERBOSE_THREADS:
-                        log(f"collector, purging {vlakno}")
-                    vlaken -= 1
+                        log(f"Collector purging {thread}")
+                    thread_count -= 1
             if DEBUG and VERBOSE_THREADS:
-                log(f"collector, all clear ({vlaken} threads)")
+                log(f"Collector: all clear ({thread_count} threads)")
             time.sleep(5)
 
         # shutdown
-        for vlakno in World.vlakna:
-            vlakno.running = False
+        for thread in World.vlakna:
+            thread.running = False
         if DEBUG:
-            log("collector, shutdown")
+            log("Collector shutdown")
 
     def start_threads(self):
         try:
-            for vlakno in World.vlakna:
-                if not vlakno._started.is_set():
-                    vlakno.start()
+            for thread in World.vlakna:
+                if not thread._started.is_set():
+                    thread.start()
         except Exception as e:
-            log(f"Vlakno odmita startovat: {e}")
+            log(f"Thread failed to start: {e}")
 
 
 class GetMessages(threading.Thread):
@@ -282,7 +282,7 @@ class GetMessages(threading.Thread):
                         elif mess["typ"] == 3:  # WALL
                             if self.inst.user.settings_show_pm_from:
                                 self.inst.send_raw(
-                                    f":{self.inst.make_hostmask(mess['nick'], room.id)} PRIVMSG {mess['komu']} :[Z kanalu {mess['rname']} #{mess['rid']}] {msg}\r\n"
+                                    f":{self.inst.make_hostmask(mess['nick'], room.id)} PRIVMSG {mess['komu']} :[From room {mess['rname']} #{mess['rid']}] {msg}\r\n"
                                 )
                             else:
                                 self.inst.send_raw(
@@ -299,7 +299,7 @@ class GetMessages(threading.Thread):
                 if (my_time - room.idler_lastsend) >= self.inst.user.idler_timer and \
                    self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
                     self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Odeslan idler\r\n"
+                        f":{self.inst.user.me} NOTICE #{room.id} :Idler message sent\r\n"
                     )
                     room.idler_lastsend = time.time()
                     self.inst.send_text(random.choice(self.inst.user.idler_text), room.id, room.id)
@@ -335,7 +335,7 @@ class GetMessages(threading.Thread):
         elif "odešel" in t or "odešla" in t:
             try:
                 nick = re.findall(r'.+\s(.+)\s(odešel|odešla)', msg)[0]
-                partmess = "Odesel" if nick[1] == "odešel" else "Odesla"
+                partmess = "Left" if nick[1] == "odešel" else "Left"
                 self.inst.send_raw(
                     f":{self.inst.make_hostmask(nick[0], room.id)} PART #{room.id} :{partmess}\r\n"
                 )
@@ -348,7 +348,7 @@ class GetMessages(threading.Thread):
                 nick = re.findall(r'.+e(lka|l)\s(.+)\sby(la|l)\s', msg)[0]
                 nick = nick[1]
                 self.inst.send_raw(
-                    f":{self.inst.make_hostmask(nick, room.id)} PART #{room.id} :Neaktivni\r\n"
+                    f":{self.inst.make_hostmask(nick, room.id)} PART #{room.id} :Inactive\r\n"
                 )
             except Exception:
                 if DEBUG:
@@ -361,14 +361,14 @@ class GetMessages(threading.Thread):
                     msg
                 )[0]
                 target = nick[1]
-                duvod = nick[7] if nick[7] else "Duvod nebyl zadan"
+                duvod = nick[7] if nick[7] else "No reason given"
                 kicker = nick[6]
                 self.inst.send_raw(
                     f":{self.inst.make_hostmask(kicker, room.id)} KICK #{room.id} {target} :{duvod}\r\n"
                 )
                 # If the kicked user is us, leave the room
                 if target.lower() == self.inst.user.username.lower() or target.lower() == self.inst.user.nick.lower():
-                    log(f"We were kicked from #{room.id} by {kicker}: {duvod}")
+                    log(f"Kicked from #{room.id} by {kicker}: {duvod}")
                     self.inst.part(room.id)
             except Exception:
                 if DEBUG:
@@ -402,21 +402,21 @@ class GetMessages(threading.Thread):
             code = data.get('code')
             if code == "404" or code == "403":
                 self.inst.send_raw(f":{self.inst.user.me} PART #{room.id}\r\n")
-                log(f"Odchod {self.inst.user.username} z mistnosti")
+                log(f"User {self.inst.user.username} left room")
                 self.inst.part(room.id)
             elif code == "401":
                 self.inst.user.login = False
                 self.inst.send_raw(
-                    f":{self.inst.user.me} NOTICE #{room.id} :Pokus o re-login...\r\n"
+                    f":{self.inst.user.me} NOTICE #{room.id} :Attempting re-login...\r\n"
                 )
                 self.inst.user.login = self.inst.check_login()
                 if self.inst.user.login:
                     self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login uspesny\r\n"
+                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login successful\r\n"
                     )
                 else:
                     self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login selhal\r\n"
+                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login failed\r\n"
                     )
                     time.sleep(10)
         except Exception:
@@ -487,7 +487,7 @@ class Chatujme:
             response = self.user.url_fetcher.open(url)
             return response.read().decode('utf-8')
         except Exception as e:
-            self.send_raw(f":{self.user.me} NOTICE * :Chyba pripojeni: {e}\r\n")
+            self.send_raw(f":{self.user.me} NOTICE * :Connection error: {e}\r\n")
             time.sleep(10)
             return self.get_url(url)
 
@@ -497,7 +497,7 @@ class Chatujme:
             response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'))
             return response.read().decode('utf-8')
         except Exception as e:
-            self.send_raw(f":{self.user.me} NOTICE * :Chyba pripojeni: {e}\r\n")
+            self.send_raw(f":{self.user.me} NOTICE * :Connection error: {e}\r\n")
             time.sleep(10)
             return self.post_url(url, postdata)
 
@@ -535,7 +535,7 @@ class Chatujme:
                 return False
             elif data['code'] in (200, 201):
                 self.send_welcome()
-                log(f"Prihlasen user {self.user.username}")
+                log(f"User logged in: {self.user.username}")
                 return True
             return False
         except Exception as e:
@@ -655,7 +655,7 @@ class Chatujme:
                 if len(parts) < 2:
                     continue
                 if self.user.login:
-                    self.send_raw(f":{self.user.me} NOTICE {self.user.username} :Uz jsi prihlasen\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.username} :Already logged in\r\n")
                     continue
                 self.user.nick = parts[1]
                 if self.user.password and self.user.username:
@@ -894,9 +894,9 @@ class SocketHandler(threading.Thread):
         self.daemon = True
 
     def run(self):
-        log(f"Prijato spojeni z {self.address[0]}")
+        log(f"Connection accepted from {self.address[0]}")
         instance = Chatujme(self.socket, self.address[0], self)
-        instance.send_raw(f":{instance.user.me} NOTICE * :Pripojeno z {self.address[0]}, cekam na prihlaseni.\r\n")
+        instance.send_raw(f":{instance.user.me} NOTICE * :Connected from {self.address[0]}, waiting for login.\r\n")
 
         while self.running:
             timestamp = int(time.time())
@@ -912,7 +912,7 @@ class SocketHandler(threading.Thread):
                         log("[PARSE] Breaking due to result=2")
                     break
             except Exception as e:
-                log(f"Spojeni z {self.address[0]} uzavreno: {e}")
+                log(f"Connection from {self.address[0]} closed: {e}")
                 if DEBUG:
                     tb.print_exc()
                 # Leave all rooms on disconnect - don't send to client (already disconnected)
@@ -931,7 +931,7 @@ class SocketHandler(threading.Thread):
                         tb.print_exc()
                     break
 
-        log(f"Spojeni z {self.address[0]} uzavreno.")
+        log(f"Connection from {self.address[0]} closed.")
         try:
             self.socket.close()
         except Exception:
@@ -947,7 +947,7 @@ def main():
     World.collector = Collector()
     World.collector.start()
 
-    log(f"ChatujmeGW {VERSION} (Python 3), nasloucham na {BIND}:{PORT}")
+    log(f"ChatujmeGW {VERSION} (Python 3), listening on {BIND}:{PORT}")
 
     try:
         while World.collector.running:
@@ -967,7 +967,7 @@ def main():
     finally:
         World.collector.running = False
         s.close()
-        log("Vypinam...")
+        log("Shutting down...")
 
 
 if __name__ == "__main__":
