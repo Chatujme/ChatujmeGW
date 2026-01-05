@@ -14,6 +14,7 @@
 """
 
 import copy
+import io
 import os
 import re
 import socket
@@ -27,6 +28,11 @@ import json
 import http.cookiejar
 import argparse
 import traceback as tb
+
+# Force UTF-8 output on Windows to support emoji and special characters
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 PORT = 6667
 BIND = "0.0.0.0"
