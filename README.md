@@ -2,17 +2,9 @@
 
 IRC Gateway pro [Chatujme.cz](https://chatujme.cz) chat. Umožňuje připojení k Chatujme.cz pomocí standardního IRC klienta.
 
-## Verze
+## Požadavky
 
-### ChatujmeGW3 (Python 3) - Doporučeno
-- **Soubor:** `chatujmegw3.py` / `chatujmegw3.exe`
 - **Python:** 3.8+
-- **Status:** Aktivně vyvíjeno
-
-### ChatujmeGW (Python 2.7) - DEPRECATED
-- **Soubor:** `chatujmegw.py` / `chatujmegw.exe`
-- **Python:** 2.7.x
-- **Status:** ⚠️ **ZASTARALÉ** - Pouze pro zpětnou kompatibilitu, nebude dále vyvíjeno
 
 ## Podporované IRC RFC
 
@@ -53,18 +45,14 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 474 | ERR_BANNEDFROMCHAN | Zakázán vstup |
 
 ### Podporované příkazy
-`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`
+`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`
 
 ## Spuštění
 
 ```bash
-# Předkompilovaný EXE
-chatujmegw3.exe
-chatujmegw3.exe --port 6667 --listen 127.0.0.1 --debug 1
-
 # Python skript
-python3 chatujmegw3.py
-python3 chatujmegw3.py --port 6667 --listen 0.0.0.0 --debug 1
+python3 chatujmegw.py
+python3 chatujmegw.py --port 6667 --listen 0.0.0.0 --debug 1
 ```
 
 ### Parametry
@@ -74,24 +62,27 @@ python3 chatujmegw3.py --port 6667 --listen 0.0.0.0 --debug 1
 | `--listen` | IP adresa pro binding | 0.0.0.0 |
 | `--debug` | Debug úroveň (0-2) | 0 |
 
-## Build EXE
+## Docker
 
 ```bash
-# Instalace PyInstaller
-pip install pyinstaller
-
 # Build
-pyinstaller --onefile --console --icon=chatujme.ico chatujmegw3.py
+docker build -t chatujmegw .
 
-# Nebo pomocí spec souboru
-pyinstaller chatujmegw3.spec
+# Run
+docker run -d -p 6667:6667 --name chatujmegw chatujmegw
+```
 
-# Výstup: dist/chatujmegw3.exe
+## Build EXE (Windows)
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --console --icon=chatujme.ico chatujmegw.py
+# Výstup: dist/chatujmegw.exe
 ```
 
 ## Použití
 
-1. Spusťte `chatujmegw3.exe`
+1. Spusťte gateway
 2. V IRC klientu nastavte:
    - **Server:** localhost
    - **Port:** 6667
