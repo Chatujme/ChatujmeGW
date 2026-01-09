@@ -46,3 +46,11 @@ release/
 
 # Project specific
 CLAUDE.md
+
+# SSL/TLS certificates and keys
+*.pem
+*.key
+*.crt
+*.cert
+ssl-*.pem
+test-*.pem
