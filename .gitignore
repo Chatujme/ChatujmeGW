@@ -1,6 +1,48 @@
-CLAUDE.md
-build/
-release/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Type checking
+.mypy_cache/
+
+# Data
+*.db
+cookies*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Documentation (temporary - remove before release)
+docs/
+
+# Legacy
+release/
 *.spec
+
+# Project specific
+CLAUDE.md
