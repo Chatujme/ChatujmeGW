@@ -4,9 +4,12 @@ __pycache__/
 *$py.class
 *.so
 build/
-dist/
 *.egg-info/
 *.egg
+
+# PyInstaller dist (keep only exe)
+dist/*
+!dist/chatujmegw.exe
 
 # Virtual environments
 .env
