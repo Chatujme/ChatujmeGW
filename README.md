@@ -17,6 +17,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 002 | RPL_YOURHOST | Info o serveru |
 | 003 | RPL_CREATED | Datum vytvoření |
 | 004 | RPL_MYINFO | Info o serveru |
+| 351 | RPL_VERSION | Verze serveru |
 | 302 | RPL_USERHOST | Host uživatele |
 | 311 | RPL_WHOISUSER | WHOIS info |
 | 312 | RPL_WHOISSERVER | WHOIS server |
@@ -45,7 +46,10 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 474 | ERR_BANNEDFROMCHAN | Zakázán vstup |
 
 ### Podporované příkazy
-`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`
+`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`
+
+### CTCP příkazy
+`VERSION`, `PING`, `TIME`
 
 ## Spuštění
 
@@ -59,8 +63,10 @@ python3 chatujmegw.py --port 6667 --listen 0.0.0.0 --debug 1
 | Parametr | Popis | Výchozí |
 |----------|-------|---------|
 | `--port` | Port pro naslouchání | 6667 |
-| `--listen` | IP adresa pro binding | 0.0.0.0 |
+| `--listen` | IP adresa pro binding | 127.0.0.1 |
 | `--debug` | Debug úroveň (0-2) | 0 |
+
+**Poznámka:** Pro přístup z jiných počítačů použijte `--listen 0.0.0.0`
 
 ## Docker
 
