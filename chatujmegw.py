@@ -143,7 +143,7 @@ class IRC_RFC:
 # MOTD lines (without empty lines for RFC compliance)
 MOTD_LINES = [
     "  .g8\"\"\"bgd` MM             Welcome to Chatujme.cz",
-    ".dP'     `M  MM             Logged in as {user}@{host}",
+    ".dP'     `M  MM             Logged in as {user}@{sex}.{host}",
     "dM'       `  MMpMMMb.",
     "MM           MM    MM       Gateway version {version}",
     "MM.          MM    MM",
@@ -645,7 +645,7 @@ class Chatujme:
         # MOTD
         self.send(self.rfc.RPL_MOTDSTART, f":- {self.user.me} Message of the Day -")
         for line in MOTD_LINES:
-            formatted = line.format(user=self.user.username, host=self.user.me, version=VERSION)
+            formatted = line.format(user=self.user.username, sex=self.user.sex, host=self.user.me, version=VERSION)
             self.send(self.rfc.RPL_MOTD, f":- {formatted}")
         self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
 
@@ -939,7 +939,7 @@ class Chatujme:
                 # Send MOTD on request
                 self.send(self.rfc.RPL_MOTDSTART, f":- {self.user.me} Message of the Day -")
                 for line in MOTD_LINES:
-                    formatted = line.format(user=self.user.username, host=self.user.me, version=VERSION)
+                    formatted = line.format(user=self.user.username, sex=self.user.sex, host=self.user.me, version=VERSION)
                     self.send(self.rfc.RPL_MOTD, f":- {formatted}")
                 self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
 
