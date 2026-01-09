@@ -819,6 +819,12 @@ class Chatujme:
 
                 is_pm = not target.startswith('#')
 
+                # Handle NickServ REGISTER command
+                if target.lower() == "nickserv" and text.lower().startswith("register"):
+                    self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Registration is only available via web.\r\n")
+                    self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Please visit: https://chatujme.cz/registrace\r\n")
+                    continue
+
                 if is_pm:
                     text = f"/m {target} {text}"
                     if self.rooms:
@@ -876,6 +882,11 @@ class Chatujme:
                     self.part(room.id, send_to_client=False)
                 self.parent.running = False
                 self.connection = False
+
+            elif command == "REGISTER":
+                # Direct REGISTER command - redirect to web
+                self.send_raw(f":{self.user.me} NOTICE * :Registration is only available via web.\r\n")
+                self.send_raw(f":{self.user.me} NOTICE * :Please visit: https://chatujme.cz/registrace\r\n")
 
             elif command not in ("", "CAP"):
                 self.send(self.rfc.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")
