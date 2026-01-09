@@ -836,6 +836,9 @@ class Chatujme:
             elif command == "PRIVMSG" or command == "NOTICE":
                 if len(parts) < 3:
                     continue
+                if not self.user.login:
+                    self.send(self.rfc.ERR_NOLOGIN, ":You have not registered")
+                    continue
                 target = parts[1]
                 # Get message after the colon
                 msg_start = line.find(':', 1)
