@@ -196,6 +196,13 @@ def log(text):
     print(f"[{time.strftime('%Y/%m/%d %H:%M:%S')}] {text}", flush=True)
 
 
+def fatal_error_pause():
+    """On Windows, pause before exit so user can read error messages"""
+    if sys.platform == 'win32':
+        log("Closing in 10 seconds...")
+        time.sleep(10)
+
+
 class Collector(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -1019,6 +1026,7 @@ def main():
             log(f"ERROR: Port {PORT} is already in use. Another instance running?")
         else:
             log(f"ERROR: Cannot bind to {BIND}:{PORT} - {e}")
+        fatal_error_pause()
         sys.exit(1)
 
     s.listen(50)
@@ -1060,4 +1068,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log(f"FATAL ERROR: {e}")
+        if DEBUG:
+            tb.print_exc()
+        fatal_error_pause()
+        sys.exit(1)
