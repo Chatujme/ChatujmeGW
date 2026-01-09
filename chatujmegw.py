@@ -936,7 +936,20 @@ class Chatujme:
 
             elif command == "MODE":
                 if len(parts) >= 2:
-                    self.send(self.rfc.RPL_CHANNELMODEIS, f"{parts[1]} +tn")
+                    target = parts[1]
+                    # MODE #room +o nick - give operator to nick (predej spravce)
+                    if len(parts) >= 4 and parts[2] in ('+o', '+O'):
+                        room_id = target.lstrip('#')
+                        nick = parts[3]
+                        self.send_text(f"/predej {nick}", room_id, room_id)
+                        self.send_raw(f":{self.user.me} MODE #{room_id} +o {nick}\r\n")
+                    # MODE #room +b - list bans (not supported, return empty)
+                    elif len(parts) >= 3 and parts[2] == '+b':
+                        room_id = target.lstrip('#')
+                        self.send_raw(f":{self.user.me} 368 {self.user.nick} #{room_id} :End of channel ban list\r\n")
+                    else:
+                        # Just return channel modes
+                        self.send(self.rfc.RPL_CHANNELMODEIS, f"{target} +tn")
 
             elif command == "WHO":
                 if len(parts) >= 2:
@@ -1047,13 +1060,51 @@ class Chatujme:
             elif command == "TOPIC":
                 if len(parts) >= 2:
                     room_id = parts[1].lstrip('#')
-                    try:
-                        response = self.get_url(f"{self.system.url}/get-room?id={int(room_id)}")
-                        data = json.loads(response)
-                        self.send(self.rfc.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
-                    except Exception:
-                        if DEBUG:
-                            tb.print_exc()
+                    # Check if setting new topic or just viewing
+                    if len(parts) >= 3:
+                        # Setting new topic: TOPIC #room :new topic text
+                        new_topic = ' '.join(parts[2:]).lstrip(':')
+                        if new_topic:
+                            try:
+                                # Call set-topic API endpoint
+                                postdata = urllib.parse.urlencode({
+                                    'roomId': room_id,
+                                    'topic': new_topic
+                                })
+                                response = self.post_url(f"{self.system.url}/set-topic", postdata)
+                                data = json.loads(response)
+                                if data.get('code') == 200:
+                                    # Success - send topic change notification
+                                    self.send_raw(
+                                        f":{self.make_hostmask(self.user.username, room_id)} TOPIC #{room_id} :{new_topic}\r\n"
+                                    )
+                                elif data.get('code') == 403:
+                                    # No permission
+                                    self.send_raw(f":{self.user.me} 482 {self.user.nick} #{room_id} :{data.get('message', 'Permission denied')}\r\n")
+                                else:
+                                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error: {data.get('message', 'Unknown error')}\r\n")
+                            except Exception as e:
+                                if DEBUG:
+                                    tb.print_exc()
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error changing topic: {e}\r\n")
+                        else:
+                            # Empty topic = show current
+                            try:
+                                response = self.get_url(f"{self.system.url}/get-room?id={int(room_id)}")
+                                data = json.loads(response)
+                                self.send(self.rfc.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
+                            except Exception:
+                                if DEBUG:
+                                    tb.print_exc()
+                    else:
+                        # Just viewing topic
+                        try:
+                            response = self.get_url(f"{self.system.url}/get-room?id={int(room_id)}")
+                            data = json.loads(response)
+                            self.send(self.rfc.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
+                        except Exception:
+                            if DEBUG:
+                                tb.print_exc()
 
             elif command == "WHOIS":
                 if len(parts) >= 2:
