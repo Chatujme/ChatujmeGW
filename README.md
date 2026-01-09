@@ -54,9 +54,17 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 ## Spuštění
 
 ```bash
-# Python skript
+# Základní spuštění (plain IRC)
 python3 chatujmegw.py
+
+# S debug výstupem
 python3 chatujmegw.py --port 6667 --listen 0.0.0.0 --debug 1
+
+# SSL/TLS režim
+python3 chatujmegw.py --ssl --ssl-cert cert.pem --ssl-key key.pem --port 6697
+
+# Dual-port režim (plain + SSL současně)
+python3 chatujmegw.py --port 6667 --ssl-port 6697 --ssl-cert cert.pem --ssl-key key.pem
 ```
 
 ### Parametry
@@ -65,8 +73,22 @@ python3 chatujmegw.py --port 6667 --listen 0.0.0.0 --debug 1
 | `--port` | Port pro naslouchání | 6667 |
 | `--listen` | IP adresa pro binding | 127.0.0.1 |
 | `--debug` | Debug úroveň (0-2) | 0 |
+| `--ssl` | Povolit SSL/TLS na hlavním portu | - |
+| `--ssl-port` | Druhý port pro SSL (dual-port mód) | - |
+| `--ssl-cert` | Cesta k SSL certifikátu | - |
+| `--ssl-key` | Cesta k SSL privátnímu klíči | - |
 
 **Poznámka:** Pro přístup z jiných počítačů použijte `--listen 0.0.0.0`
+
+### SSL/TLS
+
+Pro produkční nasazení doporučujeme použít certifikát od důvěryhodné CA (např. Let's Encrypt).
+
+Generování self-signed certifikátu pro testování:
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes \
+  -subj "/CN=chatujme.cz/O=ChatujmeGW/C=CZ"
+```
 
 ## Docker
 
