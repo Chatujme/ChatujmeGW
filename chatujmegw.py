@@ -102,6 +102,7 @@ class IRC_RFC:
     RPL_YOURHOST = "002"
     RPL_CREATED = "003"
     RPL_MYINFO = "004"
+    RPL_VERSION = "351"
     RPL_MOTDSTART = "375"
     RPL_MOTD = "372"
     RPL_ENDOFMOTD = "376"
@@ -817,6 +818,26 @@ class Chatujme:
                 else:
                     text = line[msg_start + 1:]
 
+                # Handle CTCP requests (wrapped in \x01)
+                if text.startswith('\x01') and text.endswith('\x01'):
+                    ctcp_cmd = text.strip('\x01').split(' ')[0].upper()
+                    if ctcp_cmd == "VERSION":
+                        # Reply with CTCP VERSION response
+                        version_reply = f"ChatujmeGW {VERSION} - Python {sys.version.split()[0]} on {sys.platform}"
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :\x01VERSION {version_reply}\x01\r\n")
+                        continue
+                    elif ctcp_cmd == "PING":
+                        # Echo back PING for latency measurement
+                        ping_data = text.strip('\x01')[5:].strip()  # Get data after "PING "
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :\x01PING {ping_data}\x01\r\n")
+                        continue
+                    elif ctcp_cmd == "TIME":
+                        # Reply with current time
+                        time_str = time.strftime("%a %b %d %H:%M:%S %Y")
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :\x01TIME {time_str}\x01\r\n")
+                        continue
+                    # Other CTCP commands are ignored
+
                 is_pm = not target.startswith('#')
 
                 # Handle NickServ REGISTER command
@@ -875,6 +896,10 @@ class Chatujme:
                 if len(parts) >= 2:
                     nick = parts[1]
                     self.send(self.rfc.RPL_USERHOST, f"{nick}=+~{nick}@{self.user.me}")
+
+            elif command == "VERSION":
+                # RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
+                self.send(self.rfc.RPL_VERSION, f"ChatujmeGW-{VERSION}.{DEBUG} {self.user.me} :Python {sys.version.split()[0]} on {sys.platform}")
 
             elif command == "QUIT":
                 # Leave all rooms - don't send PART back to client (they're quitting)
