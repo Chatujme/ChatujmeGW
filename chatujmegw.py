@@ -18,6 +18,7 @@ import io
 import os
 import re
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -161,12 +162,18 @@ parser = argparse.ArgumentParser(description=f'ChatujmeGW - v{VERSION}')
 parser.add_argument('--port', type=int, help="Default port 6667", default=6667)
 parser.add_argument('--listen', help="Bind gateway. Default 0.0.0.0", default="0.0.0.0")
 parser.add_argument('--debug', help="Debug/Verbose print", type=int, default=0)
+parser.add_argument('--ssl', action='store_true', help="Enable SSL/TLS encryption")
+parser.add_argument('--ssl-cert', help="Path to SSL certificate file (PEM format)")
+parser.add_argument('--ssl-key', help="Path to SSL private key file (PEM format)")
 args = parser.parse_args()
 
 PORT = args.port
 BIND = args.listen
 DEBUG = args.debug
 VERBOSE_THREADS = DEBUG >= 2
+SSL_ENABLED = args.ssl
+SSL_CERT = args.ssl_cert
+SSL_KEY = args.ssl_key
 
 try:
     PATH = os.path.dirname(os.path.abspath(__file__))
@@ -1373,6 +1380,34 @@ class SocketHandler(threading.Thread):
 
 
 def main():
+    # SSL/TLS context setup
+    ssl_context = None
+    if SSL_ENABLED:
+        if not SSL_CERT or not SSL_KEY:
+            log("ERROR: SSL enabled but --ssl-cert and --ssl-key are required")
+            fatal_error_pause()
+            sys.exit(1)
+
+        if not os.path.exists(SSL_CERT):
+            log(f"ERROR: SSL certificate not found: {SSL_CERT}")
+            fatal_error_pause()
+            sys.exit(1)
+
+        if not os.path.exists(SSL_KEY):
+            log(f"ERROR: SSL key not found: {SSL_KEY}")
+            fatal_error_pause()
+            sys.exit(1)
+
+        try:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2  # Security: Disable old protocols
+            ssl_context.load_cert_chain(SSL_CERT, SSL_KEY)
+            log(f"SSL/TLS enabled with certificate: {SSL_CERT}")
+        except ssl.SSLError as e:
+            log(f"ERROR: Failed to load SSL certificate: {e}")
+            fatal_error_pause()
+            sys.exit(1)
+
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Platform-specific socket options
@@ -1400,7 +1435,8 @@ def main():
     World.collector = Collector()
     World.collector.start()
 
-    log(f"ChatujmeGW {VERSION} (Python 3), listening on {BIND}:{PORT}")
+    ssl_status = " [SSL/TLS]" if SSL_ENABLED else ""
+    log(f"ChatujmeGW {VERSION} (Python 3), listening on {BIND}:{PORT}{ssl_status}")
 
     try:
         while World.collector.running:
@@ -1416,6 +1452,20 @@ def main():
                         pass
                     connection.close()
                     continue
+
+                # Wrap connection with SSL if enabled
+                if ssl_context:
+                    try:
+                        connection = ssl_context.wrap_socket(connection, server_side=True)
+                        if DEBUG:
+                            log(f"[SSL] Secure connection established with {address[0]}")
+                    except ssl.SSLError as e:
+                        log(f"[SSL] Handshake failed for {address[0]}: {e}")
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        continue
 
                 connection.settimeout(300)  # 5 min timeout for client connections
                 with thread_lock:
