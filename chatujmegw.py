@@ -920,11 +920,8 @@ class Chatujme:
 
             elif command == "WHOIS":
                 if len(parts) >= 2:
-                    nick = parts[1]
-                    self.send_raw(
-                        f":{self.user.me} {self.rfc.RPL_WHOISUSER} {self.user.username} {nick} ~{nick} {self.user.me} * :{nick}\r\n"
-                    )
-                    self.send(self.rfc.RPL_ENDOFWHOIS, f"{nick} :End of /WHOIS list")
+                    nick = parts[1].lstrip(':')
+                    self.handle_whois(nick)
 
             elif command == "USERHOST":
                 if len(parts) >= 2:
@@ -1032,6 +1029,73 @@ class Chatujme:
             # If we have credentials and not already logged in, try to login
             if not self.user.login and self.user.password and self.user.nick and self.user.username:
                 self.user.login = self.check_login()
+
+    def handle_whois(self, nick):
+        """Handle WHOIS command - gather info about user from all joined rooms"""
+        found = False
+        user_sex = "users"
+        user_rooms = []
+        user_status = {}  # room_id -> status (op/halfop/owner)
+
+        # Search in all joined rooms
+        for room in self.rooms:
+            for u in room.users:
+                if u.nick.lower() == nick.lower():
+                    found = True
+                    user_sex = u.sex
+                    # Get status from API
+                    try:
+                        users_data = self.get_room_users(room.id)
+                        for ud in users_data:
+                            if ud['nick'].lower() == nick.lower():
+                                status = ""
+                                if ud.get('isOwner'):
+                                    status = "@"  # Owner
+                                elif ud.get('isOP'):
+                                    status = "@"  # OP
+                                elif ud.get('isHalfOP'):
+                                    status = "%"  # HalfOP
+                                elif ud.get('sex') == "girls":
+                                    status = "+"  # Voice for girls
+                                user_rooms.append(f"{status}#{room.id}")
+                                user_status[room.id] = {
+                                    'isOwner': ud.get('isOwner', False),
+                                    'isOP': ud.get('isOP', False),
+                                    'isHalfOP': ud.get('isHalfOP', False)
+                                }
+                                break
+                    except Exception:
+                        user_rooms.append(f"#{room.id}")
+
+        if not found:
+            # User not in any of our rooms - send basic info
+            self.send(self.rfc.ERR_NOSUCHNICK, f"{nick} :No such nick/channel")
+            return
+
+        # Build realname based on sex
+        realname = "Male user" if user_sex == "boys" else "Female user" if user_sex == "girls" else "User"
+
+        # 311 RPL_WHOISUSER: <nick> <user> <host> * :<realname>
+        self.send(self.rfc.RPL_WHOISUSER, f"{nick} ~{nick} {user_sex}.chatujme.cz * :{realname}")
+
+        # 312 RPL_WHOISSERVER: <nick> <server> :<server info>
+        self.send(self.rfc.RPL_WHOISSERVER, f"{nick} {self.user.me} :Chatujme.cz IRC Gateway")
+
+        # 319 RPL_WHOISCHANNELS: <nick> :<channels>
+        if user_rooms:
+            self.send(self.rfc.RPL_WHOISCHANNELS, f"{nick} :{' '.join(user_rooms)}")
+
+        # 378 RPL_WHOISHOST: <nick> :is connecting from <host>
+        self.send(self.rfc.RPL_WHOISHOST, f"{nick} :is connecting from {user_sex}.chatujme.cz")
+
+        # Check if user has any special status
+        has_op = any(s.get('isOP') or s.get('isOwner') for s in user_status.values())
+        if has_op:
+            # 313 RPL_WHOISOPERATOR (custom usage)
+            self.send_raw(f":{self.user.me} 313 {self.user.nick} {nick} :is a room operator\r\n")
+
+        # 318 RPL_ENDOFWHOIS
+        self.send(self.rfc.RPL_ENDOFWHOIS, f"{nick} :End of /WHOIS list")
 
     def handle_join(self, room):
         in_room = self.is_in_room(room)
