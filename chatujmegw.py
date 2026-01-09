@@ -17,6 +17,7 @@ import copy
 import io
 import os
 import re
+import select
 import socket
 import ssl
 import sys
@@ -162,7 +163,8 @@ parser = argparse.ArgumentParser(description=f'ChatujmeGW - v{VERSION}')
 parser.add_argument('--port', type=int, help="Default port 6667", default=6667)
 parser.add_argument('--listen', help="Bind gateway. Default 0.0.0.0", default="0.0.0.0")
 parser.add_argument('--debug', help="Debug/Verbose print", type=int, default=0)
-parser.add_argument('--ssl', action='store_true', help="Enable SSL/TLS encryption")
+parser.add_argument('--ssl', action='store_true', help="Enable SSL/TLS encryption (SSL-only mode)")
+parser.add_argument('--ssl-port', type=int, help="Additional SSL port (enables dual-port mode: non-SSL on --port, SSL on --ssl-port)")
 parser.add_argument('--ssl-cert', help="Path to SSL certificate file (PEM format)")
 parser.add_argument('--ssl-key', help="Path to SSL private key file (PEM format)")
 args = parser.parse_args()
@@ -172,8 +174,10 @@ BIND = args.listen
 DEBUG = args.debug
 VERBOSE_THREADS = DEBUG >= 2
 SSL_ENABLED = args.ssl
+SSL_PORT = args.ssl_port
 SSL_CERT = args.ssl_cert
 SSL_KEY = args.ssl_key
+DUAL_PORT_MODE = SSL_PORT is not None
 
 try:
     PATH = os.path.dirname(os.path.abspath(__file__))
@@ -1379,10 +1383,39 @@ class SocketHandler(threading.Thread):
             pass
 
 
+def create_server_socket(bind_addr, port, description=""):
+    """Create and configure a server socket."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Platform-specific socket options
+    if sys.platform == 'win32':
+        # Windows: SO_EXCLUSIVEADDRUSE prevents port hijacking
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        # Linux/Mac: SO_REUSEADDR allows quick restart after crash
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    s.setblocking(False)  # Non-blocking for select()
+
+    try:
+        s.bind((bind_addr, port))
+    except OSError as e:
+        if e.errno == 10048 or e.errno == 98:  # Windows WSAEADDRINUSE / Linux EADDRINUSE
+            log(f"ERROR: Port {port} is already in use{description}. Another instance running?")
+        else:
+            log(f"ERROR: Cannot bind to {bind_addr}:{port}{description} - {e}")
+        return None
+
+    s.listen(50)
+    return s
+
+
 def main():
     # SSL/TLS context setup
     ssl_context = None
-    if SSL_ENABLED:
+    ssl_required = SSL_ENABLED or DUAL_PORT_MODE
+
+    if ssl_required:
         if not SSL_CERT or not SSL_KEY:
             log("ERROR: SSL enabled but --ssl-cert and --ssl-key are required")
             fatal_error_pause()
@@ -1408,82 +1441,99 @@ def main():
             fatal_error_pause()
             sys.exit(1)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Create server sockets
+    server_sockets = []
+    socket_info = {}  # Maps socket to (port, use_ssl)
 
-    # Platform-specific socket options
-    if sys.platform == 'win32':
-        # Windows: SO_EXCLUSIVEADDRUSE prevents port hijacking
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    if DUAL_PORT_MODE:
+        # Dual-port mode: plain on PORT, SSL on SSL_PORT
+        s_plain = create_server_socket(BIND, PORT, " (plain)")
+        if not s_plain:
+            fatal_error_pause()
+            sys.exit(1)
+        server_sockets.append(s_plain)
+        socket_info[s_plain] = (PORT, False)
+
+        s_ssl = create_server_socket(BIND, SSL_PORT, " (SSL)")
+        if not s_ssl:
+            s_plain.close()
+            fatal_error_pause()
+            sys.exit(1)
+        server_sockets.append(s_ssl)
+        socket_info[s_ssl] = (SSL_PORT, True)
+
+        log(f"ChatujmeGW {VERSION} (Python 3), dual-port mode:")
+        log(f"  Plain IRC on {BIND}:{PORT}")
+        log(f"  SSL/TLS IRC on {BIND}:{SSL_PORT}")
     else:
-        # Linux/Mac: SO_REUSEADDR allows quick restart after crash
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Single port mode
+        s = create_server_socket(BIND, PORT)
+        if not s:
+            fatal_error_pause()
+            sys.exit(1)
+        server_sockets.append(s)
+        socket_info[s] = (PORT, SSL_ENABLED)
 
-    s.settimeout(1.0)  # Allow periodic check for shutdown
-
-    try:
-        s.bind((BIND, PORT))
-    except OSError as e:
-        if e.errno == 10048 or e.errno == 98:  # Windows WSAEADDRINUSE / Linux EADDRINUSE
-            log(f"ERROR: Port {PORT} is already in use. Another instance running?")
-        else:
-            log(f"ERROR: Cannot bind to {BIND}:{PORT} - {e}")
-        fatal_error_pause()
-        sys.exit(1)
-
-    s.listen(50)
+        ssl_status = " [SSL/TLS]" if SSL_ENABLED else ""
+        log(f"ChatujmeGW {VERSION} (Python 3), listening on {BIND}:{PORT}{ssl_status}")
 
     World.collector = Collector()
     World.collector.start()
 
-    ssl_status = " [SSL/TLS]" if SSL_ENABLED else ""
-    log(f"ChatujmeGW {VERSION} (Python 3), listening on {BIND}:{PORT}{ssl_status}")
-
     try:
         while World.collector.running:
             try:
-                connection, address = s.accept()
+                # Use select to wait for connections on any socket
+                readable, _, _ = select.select(server_sockets, [], [], 1.0)
 
-                # Security: Check rate limit per IP
-                if not check_rate_limit(address[0]):
-                    log(f"[SECURITY] Rate limit exceeded for {address[0]}, rejecting connection")
+                for server_socket in readable:
                     try:
-                        connection.send(b"ERROR :Too many connections from your IP. Try again later.\r\n")
-                    except Exception:
-                        pass
-                    connection.close()
-                    continue
-
-                # Wrap connection with SSL if enabled
-                if ssl_context:
-                    try:
-                        connection = ssl_context.wrap_socket(connection, server_side=True)
-                        if DEBUG:
-                            log(f"[SSL] Secure connection established with {address[0]}")
-                    except ssl.SSLError as e:
-                        log(f"[SSL] Handshake failed for {address[0]}: {e}")
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
+                        connection, address = server_socket.accept()
+                    except BlockingIOError:
                         continue
 
-                connection.settimeout(300)  # 5 min timeout for client connections
-                with thread_lock:
-                    # Security: Max connections limit
-                    if len(World.vlakna) <= 378:
-                        handler = SocketHandler(connection, address)
-                        World.vlakna.append(handler)
-                    else:
-                        log(f"[SECURITY] Max connections reached, rejecting {address[0]}")
+                    port, use_ssl = socket_info[server_socket]
+
+                    # Security: Check rate limit per IP
+                    if not check_rate_limit(address[0]):
+                        log(f"[SECURITY] Rate limit exceeded for {address[0]}, rejecting connection")
                         try:
-                            connection.send(b"ERROR :Server is full. Try again later.\r\n")
+                            connection.send(b"ERROR :Too many connections from your IP. Try again later.\r\n")
                         except Exception:
                             pass
                         connection.close()
                         continue
-                World.collector.start_threads()
-            except socket.timeout:
-                continue  # Normal timeout, check if still running
+
+                    # Wrap connection with SSL if this socket requires it
+                    if use_ssl and ssl_context:
+                        try:
+                            connection = ssl_context.wrap_socket(connection, server_side=True)
+                            if DEBUG:
+                                log(f"[SSL] Secure connection established with {address[0]}:{port}")
+                        except ssl.SSLError as e:
+                            log(f"[SSL] Handshake failed for {address[0]}: {e}")
+                            try:
+                                connection.close()
+                            except Exception:
+                                pass
+                            continue
+
+                    connection.settimeout(300)  # 5 min timeout for client connections
+                    with thread_lock:
+                        # Security: Max connections limit
+                        if len(World.vlakna) <= 378:
+                            handler = SocketHandler(connection, address)
+                            World.vlakna.append(handler)
+                        else:
+                            log(f"[SECURITY] Max connections reached, rejecting {address[0]}")
+                            try:
+                                connection.send(b"ERROR :Server is full. Try again later.\r\n")
+                            except Exception:
+                                pass
+                            connection.close()
+                            continue
+                    World.collector.start_threads()
+
             except Exception as e:
                 if DEBUG:
                     log(f"Accept error: {e}")
@@ -1491,7 +1541,11 @@ def main():
         log("Received shutdown signal...")
     finally:
         World.collector.running = False
-        s.close()
+        for s in server_sockets:
+            try:
+                s.close()
+            except Exception:
+                pass
         # Wait for threads to finish (graceful shutdown)
         shutdown_timeout = 5
         start_time = time.time()
