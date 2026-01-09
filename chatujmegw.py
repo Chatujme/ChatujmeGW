@@ -178,7 +178,9 @@ class User:
         self.show_smiles = 1  # 0 - Hide, 1 - Text, 2 - URL
         self.away_message = None  # None = not away, string = away message
         self.away_last_sent = 0  # Timestamp of last away message sent
-        self.away_interval = 1800  # 30 minutes in seconds
+        self.away_interval = 1800  # 30 minutes
+        self.last_ping_sent = 0  # Timestamp of last server PING
+        self.ping_interval = 60  # Send PING every 60 seconds
 
 
 class UserInRoom:
@@ -377,6 +379,13 @@ class GetMessages(threading.Thread):
                 if room.first_load:
                     self.inst.reload_users(room.id)
                     room.first_load = False
+
+            # Server-side PING to keep connection alive
+            my_time = time.time()
+            if (my_time - self.inst.user.last_ping_sent) >= self.inst.user.ping_interval:
+                ping_token = str(int(my_time))
+                self.inst.send_raw(f"PING :{ping_token}\r\n")
+                self.inst.user.last_ping_sent = my_time
 
             time.sleep(self.inst.user.timer)
 
