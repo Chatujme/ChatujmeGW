@@ -1367,8 +1367,12 @@ class SocketHandler(threading.Thread):
         self.recv_buffer = ""  # Security: Buffer for incomplete data
 
     def run(self):
-        log(f"Connection accepted from {self.address[0]}")
         instance = Chatujme(self.socket, self.address[0], self)
+        received_data = False  # Track if client sent any data (for health check filtering)
+        is_localhost = self.address[0] in ('127.0.0.1', '::1', 'localhost')
+
+        if not is_localhost:
+            log(f"Connection accepted from {self.address[0]}")
         instance.send_raw(f":{instance.user.me} NOTICE * :Connected from {self.address[0]}, waiting for login.\r\n")
 
         while self.running:
@@ -1381,6 +1385,12 @@ class SocketHandler(threading.Thread):
                     break
 
                 self.recv_buffer += chunk
+                if chunk:
+                    received_data = True
+                    if is_localhost and not instance.login:
+                        # First data from localhost, now log it
+                        log(f"Connection accepted from {self.address[0]}")
+                        is_localhost = False  # Don't repeat
 
                 # Security: Check buffer size limit
                 if len(self.recv_buffer) > MAX_BUFFER_SIZE:
@@ -1417,7 +1427,8 @@ class SocketHandler(threading.Thread):
                 # Normal timeout, continue
                 continue
             except Exception as e:
-                log(f"Connection from {self.address[0]} closed: {e}")
+                if received_data:  # Don't log health check disconnects
+                    log(f"Connection from {self.address[0]} closed: {e}")
                 if DEBUG:
                     tb.print_exc()
                 # Leave all rooms on disconnect - don't send to client (already disconnected)
@@ -1441,7 +1452,8 @@ class SocketHandler(threading.Thread):
         for room in instance.rooms[:]:
             instance.part(room.id, send_to_client=False)
         instance.connection = False
-        log(f"Connection from {self.address[0]} closed.")
+        if received_data:  # Don't log health check disconnects
+            log(f"Connection from {self.address[0]} closed.")
         try:
             self.socket.close()
         except Exception:
