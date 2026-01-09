@@ -36,8 +36,37 @@ if sys.platform == 'win32':
 
 PORT = 6667
 BIND = "0.0.0.0"
-VERSION = "2.0.1"
+VERSION = "3.0.0"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
+
+# Security: Max retry attempts for API calls
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
+
+# Validation limits
+MAX_NICK_LENGTH = 30
+MAX_ROOM_ID = 999999
+
+# Thread synchronization
+thread_lock = threading.Lock()
+
+
+def validate_nick(nick):
+    """Validate nickname - alphanumeric, reasonable length"""
+    if not nick or len(nick) > MAX_NICK_LENGTH:
+        return False
+    # Allow alphanumeric, underscores, dashes, Czech characters
+    return bool(re.match(r'^[\w\-áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]+$', nick, re.UNICODE))
+
+
+def validate_room_id(room_id):
+    """Validate room ID - must be numeric and within range"""
+    try:
+        rid = int(room_id)
+        return 0 < rid <= MAX_ROOM_ID
+    except (ValueError, TypeError):
+        return False
+
 
 parser = argparse.ArgumentParser(description=f'ChatujmeGW - v{VERSION}')
 parser.add_argument('--port', type=int, help="Default port 6667", default=6667)
@@ -168,30 +197,33 @@ class Collector(threading.Thread):
         if DEBUG and VERBOSE_THREADS:
             log("Collector started")
         while self.running:
-            thread_count = len(World.vlakna)
-            for thread in World.vlakna[:]:
-                if not thread.is_alive() and thread._started.is_set():
-                    World.vlakna.remove(thread)
-                    if DEBUG and VERBOSE_THREADS:
-                        log(f"Collector purging {thread}")
-                    thread_count -= 1
+            with thread_lock:
+                thread_count = len(World.vlakna)
+                for thread in World.vlakna[:]:
+                    if not thread.is_alive() and thread._started.is_set():
+                        World.vlakna.remove(thread)
+                        if DEBUG and VERBOSE_THREADS:
+                            log(f"Collector purging {thread}")
+                        thread_count -= 1
             if DEBUG and VERBOSE_THREADS:
                 log(f"Collector: all clear ({thread_count} threads)")
             time.sleep(5)
 
         # shutdown
-        for thread in World.vlakna:
-            thread.running = False
+        with thread_lock:
+            for thread in World.vlakna:
+                thread.running = False
         if DEBUG:
             log("Collector shutdown")
 
     def start_threads(self):
-        try:
-            for thread in World.vlakna:
-                if not thread._started.is_set():
-                    thread.start()
-        except Exception as e:
-            log(f"Thread failed to start: {e}")
+        with thread_lock:
+            try:
+                for thread in World.vlakna:
+                    if not thread._started.is_set():
+                        thread.start()
+            except Exception as e:
+                log(f"Thread failed to start: {e}")
 
 
 class GetMessages(threading.Thread):
@@ -427,7 +459,7 @@ class GetMessages(threading.Thread):
 
 class ChatujmeSystem:
     def __init__(self, parent):
-        self.url = "http://api.chatujme.cz/irc"
+        self.url = "https://api.chatujme.cz/irc"  # Security: Always use HTTPS
         self.parent = parent
 
     def get_rooms(self):
@@ -481,25 +513,33 @@ class Chatujme:
         # New format: <img src='url' alt='text' aria-label='desc' title='desc'>
         return re.sub(r"<img src='(.+?smiles/([^.]+).gif)' alt='(.+?)'[^>]*>", pattern, msg)
 
-    def get_url(self, url):
+    def get_url(self, url, retry_count=0):
+        """Fetch URL with retry limit to prevent infinite loops"""
         self.user.url_fetcher.addheaders = [('User-agent', UA)]
         try:
-            response = self.user.url_fetcher.open(url)
+            response = self.user.url_fetcher.open(url, timeout=30)
             return response.read().decode('utf-8')
         except Exception as e:
-            self.send_raw(f":{self.user.me} NOTICE * :Connection error: {e}\r\n")
-            time.sleep(10)
-            return self.get_url(url)
+            if retry_count >= MAX_RETRIES:
+                log(f"[GET_URL] Max retries ({MAX_RETRIES}) reached for {url}")
+                return '{"code": 500, "message": "Connection failed after retries"}'
+            self.send_raw(f":{self.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{MAX_RETRIES}): {e}\r\n")
+            time.sleep(RETRY_DELAY)
+            return self.get_url(url, retry_count + 1)
 
-    def post_url(self, url, postdata):
+    def post_url(self, url, postdata, retry_count=0):
+        """POST URL with retry limit to prevent infinite loops"""
         self.user.url_fetcher.addheaders = [('User-agent', UA)]
         try:
-            response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'))
+            response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=30)
             return response.read().decode('utf-8')
         except Exception as e:
-            self.send_raw(f":{self.user.me} NOTICE * :Connection error: {e}\r\n")
-            time.sleep(10)
-            return self.post_url(url, postdata)
+            if retry_count >= MAX_RETRIES:
+                log(f"[POST_URL] Max retries ({MAX_RETRIES}) reached for {url}")
+                return '{"code": 500, "message": "Connection failed after retries"}'
+            self.send_raw(f":{self.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{MAX_RETRIES}): {e}\r\n")
+            time.sleep(RETRY_DELAY)
+            return self.post_url(url, postdata, retry_count + 1)
 
     def reload_users(self, rid):
         data = self.get_room_users(rid)
@@ -657,7 +697,12 @@ class Chatujme:
                 if self.user.login:
                     self.send_raw(f":{self.user.me} NOTICE {self.user.username} :Already logged in\r\n")
                     continue
-                self.user.nick = parts[1]
+                nick = parts[1]
+                # Security: Validate nickname
+                if not validate_nick(nick):
+                    self.send_raw(f":{self.user.me} NOTICE * :Invalid nickname (max {MAX_NICK_LENGTH} chars, alphanumeric only)\r\n")
+                    continue
+                self.user.nick = nick
                 if self.user.password and self.user.username:
                     self.user.login = self.check_login()
 
@@ -688,6 +733,10 @@ class Chatujme:
 
                 rooms = parts[1].replace('#', '').split(',')
                 for room in rooms:
+                    # Security: Validate room ID before joining
+                    if not validate_room_id(room):
+                        self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room} :Invalid room ID")
+                        continue
                     self.handle_join(room)
 
             elif command == "PART":
@@ -923,7 +972,8 @@ class SocketHandler(threading.Thread):
 
             if instance.user.nick and instance.user.login and not instance.user.reading:
                 try:
-                    World.vlakna.append(GetMessages(instance, self.socket))
+                    with thread_lock:
+                        World.vlakna.append(GetMessages(instance, self.socket))
                     World.collector.start_threads()
                     instance.user.reading = True
                 except Exception as e:
@@ -941,6 +991,7 @@ class SocketHandler(threading.Thread):
 def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.settimeout(1.0)  # Allow periodic check for shutdown
     s.bind((BIND, PORT))
     s.listen(50)
 
@@ -953,20 +1004,30 @@ def main():
         while World.collector.running:
             try:
                 connection, address = s.accept()
-                if len(World.vlakna) <= 378:
-                    handler = SocketHandler(connection, address)
-                    World.vlakna.append(handler)
-                    World.collector.start_threads()
-                else:
-                    connection.close()
+                connection.settimeout(300)  # 5 min timeout for client connections
+                with thread_lock:
+                    if len(World.vlakna) <= 378:
+                        handler = SocketHandler(connection, address)
+                        World.vlakna.append(handler)
+                    else:
+                        connection.close()
+                        continue
+                World.collector.start_threads()
+            except socket.timeout:
+                continue  # Normal timeout, check if still running
             except Exception as e:
                 if DEBUG:
                     log(f"Accept error: {e}")
     except KeyboardInterrupt:
-        pass
+        log("Received shutdown signal...")
     finally:
         World.collector.running = False
         s.close()
+        # Wait for threads to finish (graceful shutdown)
+        shutdown_timeout = 5
+        start_time = time.time()
+        while World.vlakna and (time.time() - start_time) < shutdown_timeout:
+            time.sleep(0.1)
         log("Shutting down...")
 
 
