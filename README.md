@@ -21,6 +21,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 302 | RPL_USERHOST | Host uživatele |
 | 311 | RPL_WHOISUSER | WHOIS info |
 | 312 | RPL_WHOISSERVER | WHOIS server |
+| 313 | RPL_WHOISOPERATOR | WHOIS operátor |
 | 315 | RPL_ENDOFWHO | Konec WHO |
 | 317 | RPL_WHOISIDLE | WHOIS idle |
 | 318 | RPL_ENDOFWHOIS | Konec WHOIS |
@@ -34,6 +35,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 352 | RPL_WHOREPLY | WHO odpověď |
 | 353 | RPL_NAMREPLY | Seznam uživatelů |
 | 366 | RPL_ENDOFNAMES | Konec NAMES |
+| 368 | RPL_ENDOFBANLIST | Konec ban listu |
 | 372 | RPL_MOTD | MOTD řádek |
 | 375 | RPL_MOTDSTART | Začátek MOTD |
 | 376 | RPL_ENDOFMOTD | Konec MOTD |
