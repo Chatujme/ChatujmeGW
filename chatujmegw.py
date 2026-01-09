@@ -974,6 +974,19 @@ class Chatujme:
                 self.send_raw(f":{self.user.me} NOTICE * :Registration is only available via web.\r\n")
                 self.send_raw(f":{self.user.me} NOTICE * :Please visit: https://chatujme.cz/registrace\r\n")
 
+            elif command == "NICKSERV" or command == "NS":
+                # Handle NICKSERV/NS shortcut commands (some clients send these)
+                if len(parts) > 1:
+                    subcmd = parts[1].lower()
+                    if subcmd == "identify" or subcmd == "id":
+                        # Already logged in via PASS, ignore
+                        self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :You are already identified.\r\n")
+                    elif subcmd == "register":
+                        self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Registration is only available via web.\r\n")
+                        self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Please visit: https://chatujme.cz/registrace\r\n")
+                    else:
+                        self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Unknown NickServ command: {subcmd}\r\n")
+
             elif command not in ("", "CAP"):
                 self.send(self.rfc.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")
 
