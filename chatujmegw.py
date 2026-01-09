@@ -43,8 +43,9 @@ UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.spli
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 
-# Validation limits
-MAX_NICK_LENGTH = 30
+# Validation limits (from Chatujme.cz registration)
+MIN_NICK_LENGTH = 4
+MAX_NICK_LENGTH = 23
 MAX_ROOM_ID = 999999
 
 # Thread synchronization
@@ -52,11 +53,21 @@ thread_lock = threading.Lock()
 
 
 def validate_nick(nick):
-    """Validate nickname - alphanumeric, reasonable length"""
-    if not nick or len(nick) > MAX_NICK_LENGTH:
+    """
+    Validate nickname according to Chatujme.cz rules:
+    - Only a-z, 0-9, dash (-), underscore (_)
+    - Must NOT start with number, dash, underscore, or dot
+    - Length: 4-23 characters
+    """
+    if not nick:
         return False
-    # Allow alphanumeric, underscores, dashes, Czech characters
-    return bool(re.match(r'^[\w\-áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]+$', nick, re.UNICODE))
+    if len(nick) < MIN_NICK_LENGTH or len(nick) > MAX_NICK_LENGTH:
+        return False
+    # Must not start with number, dash, underscore, or dot
+    if not re.match(r'^[^0-9\-_\.][a-zA-Z0-9\-_\.]*$', nick):
+        return False
+    # Overall pattern: only alphanumeric, dash, underscore
+    return bool(re.match(r'^[a-zA-Z0-9\-_]+$', nick))
 
 
 def validate_room_id(room_id):
@@ -698,9 +709,9 @@ class Chatujme:
                     self.send_raw(f":{self.user.me} NOTICE {self.user.username} :Already logged in\r\n")
                     continue
                 nick = parts[1]
-                # Security: Validate nickname
+                # Security: Validate nickname (Chatujme.cz rules)
                 if not validate_nick(nick):
-                    self.send_raw(f":{self.user.me} NOTICE * :Invalid nickname (max {MAX_NICK_LENGTH} chars, alphanumeric only)\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE * :Invalid nickname ({MIN_NICK_LENGTH}-{MAX_NICK_LENGTH} chars, a-z 0-9 - _ only, must start with letter)\r\n")
                     continue
                 self.user.nick = nick
                 if self.user.password and self.user.username:
