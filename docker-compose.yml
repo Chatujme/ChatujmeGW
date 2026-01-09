@@ -4,8 +4,27 @@ services:
     container_name: chatujmegw
     ports:
       - "6667:6667"
-    restart: unless-stopped
+      - "6697:6697"
+    restart: always
     environment:
       - TZ=Europe/Prague
-    # Optional: enable debug mode
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    # SSL certificates (mount if using SSL)
+    # volumes:
+    #   - ./certs:/app/certs:ro
+    # SSL mode command:
+    # command: ["--port", "6667", "--ssl-port", "6697", "--ssl-cert", "/app/certs/cert.pem", "--ssl-key", "/app/certs/key.pem", "--listen", "0.0.0.0"]
+    # Debug mode:
     # command: ["--port", "6667", "--listen", "0.0.0.0", "--debug", "1"]
