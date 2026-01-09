@@ -1,0 +1,11 @@
+services:
+  chatujmegw:
+    build: .
+    container_name: chatujmegw
+    ports:
+      - "6667:6667"
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Prague
+    # Optional: enable debug mode
+    # command: ["--port", "6667", "--listen", "0.0.0.0", "--debug", "1"]
