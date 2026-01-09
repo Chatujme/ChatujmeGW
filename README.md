@@ -65,10 +65,12 @@ python3 chatujmegw.py --port 6667 --listen 0.0.0.0 --debug 1
 ## Docker
 
 ```bash
-# Build
-docker build -t chatujmegw .
+# Docker Compose (recommended)
+docker compose up -d
+docker compose logs -f
 
-# Run
+# Manual build & run
+docker build -t chatujmegw .
 docker run -d -p 6667:6667 --name chatujmegw chatujmegw
 ```
 
