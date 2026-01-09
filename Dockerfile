@@ -18,9 +18,9 @@ USER chatujmegw
 # Plain IRC and SSL ports
 EXPOSE 6667 6697
 
-# Health check - verify process is running
+# Health check - verify port is listening
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD pgrep -f "python3 chatujmegw.py" || exit 1
+    CMD python3 -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('127.0.0.1',6667)); s.close()" || exit 1
 
 ENTRYPOINT ["python3", "-u", "chatujmegw.py"]
 CMD ["--port", "6667", "--listen", "0.0.0.0"]
