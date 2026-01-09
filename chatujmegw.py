@@ -38,7 +38,7 @@ if sys.platform == 'win32':
 
 PORT = 6667
 BIND = "127.0.0.1"  # Security: localhost only by default, use --listen 0.0.0.0 for external access
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls
@@ -677,6 +677,20 @@ class Chatujme:
         try:
             response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=API_TIMEOUT)
             return response.read().decode('utf-8')
+        except urllib.error.HTTPError as e:
+            # Read JSON response from HTTP errors (403, 404, etc.) - these are valid API responses
+            if e.code in (400, 403, 404):
+                try:
+                    return e.read().decode('utf-8')
+                except Exception:
+                    return f'{{"code": {e.code}, "message": "{e.reason}"}}'
+            # Other HTTP errors - retry
+            if retry_count >= MAX_RETRIES:
+                log(f"[POST_URL] Max retries ({MAX_RETRIES}) reached for {url}")
+                return '{"code": 500, "message": "Connection failed after retries"}'
+            self.send_raw(f":{self.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{MAX_RETRIES}): {e}\r\n")
+            time.sleep(RETRY_DELAY)
+            return self.post_url(url, postdata, retry_count + 1)
         except Exception as e:
             if retry_count >= MAX_RETRIES:
                 log(f"[POST_URL] Max retries ({MAX_RETRIES}) reached for {url}")
