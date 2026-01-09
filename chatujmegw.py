@@ -733,7 +733,7 @@ class Chatujme:
                 if self.user.login:
                     self.send_raw(f":{self.user.me} NOTICE {self.user.username} :Already logged in\r\n")
                     continue
-                nick = parts[1]
+                nick = parts[1].lstrip(':')
                 # Security: Validate nickname (Chatujme.cz rules)
                 if not validate_nick(nick):
                     self.send_raw(f":{self.user.me} NOTICE * :Invalid nickname ({MIN_NICK_LENGTH}-{MAX_NICK_LENGTH} chars, a-z 0-9 - _ only, must start with letter)\r\n")
