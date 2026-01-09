@@ -48,8 +48,86 @@ MIN_NICK_LENGTH = 4
 MAX_NICK_LENGTH = 23
 MAX_ROOM_ID = 999999
 
+# Security: Buffer and message limits (RFC 1459)
+MAX_LINE_LENGTH = 512  # RFC 1459 max line length
+MAX_BUFFER_SIZE = 4096  # Max buffer before disconnect
+MAX_MESSAGE_LENGTH = 500  # Max message content length
+
+# Security: Rate limiting
+MAX_CONNECTIONS_PER_IP = 5  # Max simultaneous connections per IP
+CONNECTION_WINDOW = 60  # Rate limit window in seconds
+MAX_COMMANDS_PER_SECOND = 10  # Max commands per second per connection
+
+# Security: API timeout
+API_TIMEOUT = 10  # Reduced from 30 seconds
+
 # Thread synchronization
 thread_lock = threading.Lock()
+
+# Rate limiting storage
+connection_counts = {}  # IP -> list of connection timestamps
+connection_counts_lock = threading.Lock()
+
+
+def sanitize_irc(text):
+    """
+    Remove CRLF, null bytes and other control characters from IRC messages.
+    Prevents IRC protocol injection attacks.
+    """
+    if not text:
+        return ""
+    # Remove CR, LF, null bytes
+    text = text.replace('\r', '').replace('\n', '').replace('\0', '')
+    # Remove other potentially dangerous control characters (0x00-0x1F except tab)
+    return ''.join(c for c in text if ord(c) >= 32 or c == '\t')
+
+
+def sanitize_log(text):
+    """
+    Sanitize sensitive data from log output.
+    Masks passwords, tokens, and session data.
+    """
+    if not text:
+        return ""
+    text = str(text)
+    # Mask password in various formats
+    text = re.sub(r'password=[^&\s"\']+', 'password=***', text, flags=re.IGNORECASE)
+    text = re.sub(r'"password"\s*:\s*"[^"]+"', '"password": "***"', text, flags=re.IGNORECASE)
+    text = re.sub(r'PASS\s+\S+', 'PASS ***', text, flags=re.IGNORECASE)
+    # Mask tokens and session IDs
+    text = re.sub(r'token=[^&\s"\']+', 'token=***', text, flags=re.IGNORECASE)
+    text = re.sub(r'session[_-]?id=[^&\s"\']+', 'session_id=***', text, flags=re.IGNORECASE)
+    text = re.sub(r'cookie:\s*[^\r\n]+', 'cookie: ***', text, flags=re.IGNORECASE)
+    return text
+
+
+def check_rate_limit(ip):
+    """
+    Check if IP has exceeded connection rate limit.
+    Returns True if connection is allowed, False if rate limited.
+    """
+    now = time.time()
+    with connection_counts_lock:
+        if ip not in connection_counts:
+            connection_counts[ip] = []
+
+        # Clean old entries
+        connection_counts[ip] = [t for t in connection_counts[ip] if now - t < CONNECTION_WINDOW]
+
+        if len(connection_counts[ip]) >= MAX_CONNECTIONS_PER_IP:
+            return False
+
+        connection_counts[ip].append(now)
+        return True
+
+
+def safe_username_hash(username):
+    """
+    Create safe filename from username using hash.
+    Prevents path traversal attacks.
+    """
+    import hashlib
+    return hashlib.sha256(username.lower().encode('utf-8')).hexdigest()[:16]
 
 
 def validate_nick(nick):
@@ -166,10 +244,14 @@ class User:
         self.login = False
         self.sex = "boys"
         self.reading = False
-        self.cookie_jar = http.cookiejar.LWPCookieJar(os.path.join(PATH, "cookies.txt"))
+        # Security: Use in-memory cookies only - no file storage
+        self.cookie_jar = http.cookiejar.CookieJar()
         self.url_fetcher = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self.cookie_jar)
         )
+        # Security: Command rate limiting per connection
+        self.command_timestamps = []
+        self.last_command_check = 0
         self.settings_show_pm_from = True
         self.timer = 5
         self.idler_enable = False
@@ -200,8 +282,11 @@ class RoomStruct:
         self.idler_lastsend = 0
 
 
-def log(text):
+def log(text, sanitize=True):
+    """Log message with optional sanitization of sensitive data"""
     text = str(text).replace("\r", "").replace("\n", " | ")
+    if sanitize:
+        text = sanitize_log(text)
     print(f"[{time.strftime('%Y/%m/%d %H:%M:%S')}] {text}", flush=True)
 
 
@@ -390,6 +475,9 @@ class GetMessages(threading.Thread):
             time.sleep(self.inst.user.timer)
 
     def handle_system_message(self, mess, msg, room):
+        # Security: Limit message length to prevent ReDoS attacks
+        if len(msg) > MAX_MESSAGE_LENGTH:
+            msg = msg[:MAX_MESSAGE_LENGTH]
         t = msg.replace("'", "")
         u = UserInRoom()
 
@@ -562,7 +650,7 @@ class Chatujme:
         """Fetch URL with retry limit to prevent infinite loops"""
         self.user.url_fetcher.addheaders = [('User-agent', UA)]
         try:
-            response = self.user.url_fetcher.open(url, timeout=30)
+            response = self.user.url_fetcher.open(url, timeout=API_TIMEOUT)
             return response.read().decode('utf-8')
         except Exception as e:
             if retry_count >= MAX_RETRIES:
@@ -576,7 +664,7 @@ class Chatujme:
         """POST URL with retry limit to prevent infinite loops"""
         self.user.url_fetcher.addheaders = [('User-agent', UA)]
         try:
-            response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=30)
+            response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=API_TIMEOUT)
             return response.read().decode('utf-8')
         except Exception as e:
             if retry_count >= MAX_RETRIES:
@@ -595,30 +683,36 @@ class Chatujme:
     def check_login(self):
         if not self.user.username or not self.user.nick or not self.user.password:
             if DEBUG:
-                log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}, pass={'*' * len(self.user.password) if self.user.password else 'None'}")
+                log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}")
             return False
 
         if DEBUG:
             log(f"[LOGIN] Attempting login for {self.user.username}")
 
-        # Create user-specific cookie file
-        cookie_path = os.path.join(PATH, f"cookies_{self.user.username}.txt")
-        self.user.cookie_jar = http.cookiejar.LWPCookieJar(cookie_path)
+        # Security: Use fresh in-memory cookies for each login (no file storage)
+        self.user.cookie_jar = http.cookiejar.CookieJar()
         self.user.url_fetcher = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self.user.cookie_jar)
         )
 
         try:
-            postdata = f"username={self.user.username}&password={self.user.password}"
+            # Security: URL-encode username and password to prevent injection
+            safe_username = urllib.parse.quote_plus(self.user.username)
+            safe_password = urllib.parse.quote_plus(self.user.password)
+            postdata = f"username={safe_username}&password={safe_password}"
             response = self.post_url(f"{self.system.url}/check-login", postdata)
             if DEBUG:
-                log(f"[LOGIN] API response: {response[:200]}")
+                log(f"[LOGIN] API response: {response[:200]}")  # sanitize_log handles password masking
             data = json.loads(response)
 
-            if data['code'] == 401:
-                self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{data['message']}")
+            # Security: Safe access to API response fields
+            code = data.get('code', 0)
+            message = data.get('message', 'Unknown error')
+
+            if code == 401:
+                self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
                 return False
-            elif data['code'] in (200, 201):
+            elif code in (200, 201):
                 self.send_welcome()
                 log(f"User logged in: {self.user.username}")
                 return True
@@ -715,6 +809,16 @@ class Chatujme:
         except Exception:
             return []
 
+    def check_command_rate(self):
+        """Check if command rate limit exceeded. Returns True if allowed."""
+        now = time.time()
+        # Clean old entries (older than 1 second)
+        self.user.command_timestamps = [t for t in self.user.command_timestamps if now - t < 1.0]
+        if len(self.user.command_timestamps) >= MAX_COMMANDS_PER_SECOND:
+            return False
+        self.user.command_timestamps.append(now)
+        return True
+
     def parse(self, data, timestamp):
         if not data:
             self.connection = False
@@ -726,11 +830,21 @@ class Chatujme:
             if not line:
                 continue
 
+            # Security: Limit line length
+            if len(line) > MAX_LINE_LENGTH:
+                log(f"[SECURITY] Line too long from {self.address} ({len(line)} chars), truncating")
+                line = line[:MAX_LINE_LENGTH]
+
+            # Security: Check command rate limit
+            if not self.check_command_rate():
+                self.send_raw(f":{self.user.me} NOTICE * :Rate limit exceeded. Slow down.\r\n")
+                continue
+
             parts = line.split(" ")
             command = parts[0].upper()
 
             if DEBUG:
-                log(f"<< {line}")
+                log(f"<< {sanitize_log(line)}")
 
             # CAP handling for modern IRC clients (like girc)
             if command == "CAP":
@@ -846,6 +960,15 @@ class Chatujme:
                     text = ' '.join(parts[2:])
                 else:
                     text = line[msg_start + 1:]
+
+                # Security: Sanitize message content (prevent CRLF injection)
+                text = sanitize_irc(text)
+                target = sanitize_irc(target)
+
+                # Security: Limit message length
+                if len(text) > MAX_MESSAGE_LENGTH:
+                    text = text[:MAX_MESSAGE_LENGTH]
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Message truncated to {MAX_MESSAGE_LENGTH} characters\r\n")
 
                 # Handle CTCP requests (wrapped in \x01)
                 if text.startswith('\x01') and text.endswith('\x01'):
@@ -1107,17 +1230,20 @@ class Chatujme:
         if DEBUG:
             log(f"JOIN to {room}: {data}")
 
-        if data['code'] == 403:
+        # Security: Safe access to API response
+        code = data.get('code', 0)
+
+        if code == 403:
             # Banned from channel - send both RFC error and NOTICE with detailed message
             ban_msg = data.get('message', 'Cannot join channel')
             self.send(self.rfc.ERR_BANNEDFROMCHAN, f"#{data.get('id', room)} :Cannot join channel (+b)")
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{ban_msg}\r\n")
-        elif data['code'] == 404:
+        elif code == 404:
             self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room} :No such channel")
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data.get('message', 'Room does not exist')}\r\n")
-        elif data['code'] != 200:
+        elif code != 200:
             # Unknown error code - show as notice
-            err_msg = data.get('message', f'Unknown error (code {data["code"]})')
+            err_msg = data.get('message', f'Unknown error (code {code})')
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error joining #{room}: {err_msg}\r\n")
         else:
             users_data = self.get_room_users(room)
@@ -1142,7 +1268,10 @@ class Chatujme:
         self.send_raw(line)
 
     def send_raw(self, msg):
-        """Send raw IRC message"""
+        """Send raw IRC message with length limit"""
+        # Security: Limit message length to prevent buffer issues
+        if len(msg) > MAX_LINE_LENGTH + 2:  # +2 for \r\n
+            msg = msg[:MAX_LINE_LENGTH] + "\r\n"
         if DEBUG:
             log(f">> {msg.strip()}")
         try:
@@ -1159,6 +1288,7 @@ class SocketHandler(threading.Thread):
         self.address = address
         self.running = True
         self.daemon = True
+        self.recv_buffer = ""  # Security: Buffer for incomplete data
 
     def run(self):
         log(f"Connection accepted from {self.address[0]}")
@@ -1168,16 +1298,48 @@ class SocketHandler(threading.Thread):
         while self.running:
             timestamp = int(time.time())
             try:
-                ircdata = instance.socket.recv(2 ** 13).decode('utf-8', errors='replace')
-                if DEBUG:
-                    log(f"[RECV] {repr(ircdata)}")
-                result = instance.parse(ircdata, timestamp)
-                if DEBUG:
-                    log(f"[PARSE] result={result}, login={instance.user.login}, nick={instance.user.nick}")
-                if result == 2:
-                    if DEBUG:
-                        log("[PARSE] Breaking due to result=2")
+                # Security: Read in smaller chunks
+                chunk = instance.socket.recv(1024).decode('utf-8', errors='replace')
+                if not chunk:
+                    # Connection closed
                     break
+
+                self.recv_buffer += chunk
+
+                # Security: Check buffer size limit
+                if len(self.recv_buffer) > MAX_BUFFER_SIZE:
+                    log(f"[SECURITY] Buffer overflow attempt from {self.address[0]}, disconnecting")
+                    instance.send_raw(f":{instance.user.me} ERROR :Buffer overflow - disconnecting\r\n")
+                    break
+
+                # Process complete lines only
+                while '\r\n' in self.recv_buffer or '\n' in self.recv_buffer:
+                    # Find line terminator
+                    rn_pos = self.recv_buffer.find('\r\n')
+                    n_pos = self.recv_buffer.find('\n')
+
+                    if rn_pos != -1 and (n_pos == -1 or rn_pos < n_pos):
+                        line = self.recv_buffer[:rn_pos]
+                        self.recv_buffer = self.recv_buffer[rn_pos + 2:]
+                    elif n_pos != -1:
+                        line = self.recv_buffer[:n_pos]
+                        self.recv_buffer = self.recv_buffer[n_pos + 1:]
+                    else:
+                        break
+
+                    # Parse complete line
+                    result = instance.parse(line + "\r\n", timestamp)
+                    if DEBUG:
+                        log(f"[PARSE] result={result}, login={instance.user.login}, nick={instance.user.nick}")
+                    if result == 2:
+                        if DEBUG:
+                            log("[PARSE] Breaking due to result=2")
+                        self.running = False
+                        break
+
+            except socket.timeout:
+                # Normal timeout, continue
+                continue
             except Exception as e:
                 log(f"Connection from {self.address[0]} closed: {e}")
                 if DEBUG:
@@ -1199,6 +1361,10 @@ class SocketHandler(threading.Thread):
                         tb.print_exc()
                     break
 
+        # Cleanup on disconnect
+        for room in instance.rooms[:]:
+            instance.part(room.id, send_to_client=False)
+        instance.connection = False
         log(f"Connection from {self.address[0]} closed.")
         try:
             self.socket.close()
@@ -1240,12 +1406,29 @@ def main():
         while World.collector.running:
             try:
                 connection, address = s.accept()
+
+                # Security: Check rate limit per IP
+                if not check_rate_limit(address[0]):
+                    log(f"[SECURITY] Rate limit exceeded for {address[0]}, rejecting connection")
+                    try:
+                        connection.send(b"ERROR :Too many connections from your IP. Try again later.\r\n")
+                    except Exception:
+                        pass
+                    connection.close()
+                    continue
+
                 connection.settimeout(300)  # 5 min timeout for client connections
                 with thread_lock:
+                    # Security: Max connections limit
                     if len(World.vlakna) <= 378:
                         handler = SocketHandler(connection, address)
                         World.vlakna.append(handler)
                     else:
+                        log(f"[SECURITY] Max connections reached, rejecting {address[0]}")
+                        try:
+                            connection.send(b"ERROR :Server is full. Try again later.\r\n")
+                        except Exception:
+                            pass
                         connection.close()
                         continue
                 World.collector.start_threads()
