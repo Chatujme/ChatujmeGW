@@ -44,9 +44,17 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 444 | ERR_NOLOGIN | Chyba přihlášení |
 | 461 | ERR_NEEDMOREPARAMS | Chybí parametry |
 | 474 | ERR_BANNEDFROMCHAN | Zakázán vstup |
+| 482 | ERR_CHANOPRIVSNEEDED | Nedostatečná oprávnění |
 
 ### Podporované příkazy
 `NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`
+
+### OP příkazy
+| Příkaz | Popis |
+|--------|-------|
+| `KICK #room nick :důvod` | Vykopnutí uživatele z místnosti |
+| `MODE #room +o nick` | Předání správce (`/predej`) |
+| `TOPIC #room :nový popis` | Změna popisu místnosti (vyžaduje oprávnění) |
 
 ### CTCP příkazy
 `VERSION`, `PING`, `TIME`
@@ -99,7 +107,17 @@ docker compose logs -f
 
 # Manual build & run
 docker build -t chatujmegw .
-docker run -d -p 6667:6667 --name chatujmegw chatujmegw
+docker run -d -p 6667:6667 -p 6697:6697 --restart always --name chatujmegw chatujmegw
+```
+
+### Docker s SSL
+```bash
+# Vytvořte složku certs/ s certifikáty
+mkdir certs
+cp cert.pem key.pem certs/
+
+# Upravte docker-compose.yml - odkomentujte volumes a command pro SSL
+docker compose up -d
 ```
 
 ## Build EXE (Windows)
@@ -110,12 +128,14 @@ pyinstaller --onefile --console --icon=chatujme.ico chatujmegw.py
 # Výstup: dist/chatujmegw.exe
 ```
 
+Předkompilovaný `dist/chatujmegw.exe` je součástí repozitáře.
+
 ## Použití
 
 1. Spusťte gateway
 2. V IRC klientu nastavte:
    - **Server:** localhost
-   - **Port:** 6667
+   - **Port:** 6667 (nebo 6697 pro SSL)
    - **Nick:** váš nick na Chatujme.cz
    - **Password:** vaše heslo
 3. Připojte se a vstupte do místnosti: `/join #12345`
