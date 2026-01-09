@@ -35,7 +35,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 PORT = 6667
-BIND = "0.0.0.0"
+BIND = "127.0.0.1"  # Security: localhost only by default, use --listen 0.0.0.0 for external access
 VERSION = "3.0.0"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
@@ -1001,9 +1001,26 @@ class SocketHandler(threading.Thread):
 
 def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    # Platform-specific socket options
+    if sys.platform == 'win32':
+        # Windows: SO_EXCLUSIVEADDRUSE prevents port hijacking
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        # Linux/Mac: SO_REUSEADDR allows quick restart after crash
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
     s.settimeout(1.0)  # Allow periodic check for shutdown
-    s.bind((BIND, PORT))
+
+    try:
+        s.bind((BIND, PORT))
+    except OSError as e:
+        if e.errno == 10048 or e.errno == 98:  # Windows WSAEADDRINUSE / Linux EADDRINUSE
+            log(f"ERROR: Port {PORT} is already in use. Another instance running?")
+        else:
+            log(f"ERROR: Cannot bind to {BIND}:{PORT} - {e}")
+        sys.exit(1)
+
     s.listen(50)
 
     World.collector = Collector()
