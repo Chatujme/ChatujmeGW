@@ -38,6 +38,9 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 375 | RPL_MOTDSTART | Začátek MOTD |
 | 376 | RPL_ENDOFMOTD | Konec MOTD |
 | 378 | RPL_WHOISHOST | WHOIS host |
+| 301 | RPL_AWAY | Uživatel je pryč |
+| 305 | RPL_UNAWAY | Již nejsi pryč |
+| 306 | RPL_NOWAWAY | Jsi označen jako pryč |
 | 401 | ERR_NOSUCHNICK | Nick neexistuje |
 | 403 | ERR_NOSUCHCHANNEL | Místnost neexistuje |
 | 421 | ERR_UNKNOWNCOMMAND | Neznámý příkaz |
@@ -47,7 +50,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 482 | ERR_CHANOPRIVSNEEDED | Nedostatečná oprávnění |
 
 ### Podporované příkazy
-`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`
+`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`, `AWAY`, `MOTD`
 
 ### OP příkazy
 | Příkaz | Popis |
