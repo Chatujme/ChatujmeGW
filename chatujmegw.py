@@ -129,6 +129,9 @@ class IRC_RFC:
     RPL_WHOISHOST = "378"
     RPL_WHOISIDLE = "317"
     RPL_ENDOFWHOIS = "318"
+    RPL_AWAY = "301"
+    RPL_UNAWAY = "305"
+    RPL_NOWAWAY = "306"
     RPL_NOTICE = "NOTICE"
     RPL_JOIN = "JOIN"
     RPL_PART = "PART"
@@ -173,6 +176,9 @@ class User:
         self.idler_timer = 2400  # 40min
         self.idler_text = [".", "..", "AFK"]
         self.show_smiles = 1  # 0 - Hide, 1 - Text, 2 - URL
+        self.away_message = None  # None = not away, string = away message
+        self.away_last_sent = 0  # Timestamp of last away message sent
+        self.away_interval = 1800  # 30 minutes in seconds
 
 
 class UserInRoom:
@@ -354,6 +360,17 @@ class GetMessages(threading.Thread):
                     )
                     room.idler_lastsend = time.time()
                     self.inst.send_text(random.choice(self.inst.user.idler_text), room.id, room.id)
+
+            # Away message repeater (every 30 min)
+            if self.inst.user.away_message:
+                my_time = time.time()
+                if (my_time - self.inst.user.away_last_sent) >= self.inst.user.away_interval:
+                    for room in self.inst.rooms:
+                        self.inst.send_text(self.inst.user.away_message, room.id, room.id)
+                    self.inst.user.away_last_sent = my_time
+                    self.inst.send_raw(
+                        f":{self.inst.user.me} NOTICE {self.inst.user.nick} :Away message repeated to all rooms\r\n"
+                    )
 
             # Load users on first load
             for room in self.inst.rooms:
@@ -859,6 +876,14 @@ class Chatujme:
                     if room:
                         room.idler_lastsend = time.time()
 
+                # Auto-disable away when user sends a message
+                if self.user.away_message:
+                    self.user.away_message = None
+                    self.user.away_last_sent = 0
+                    self.send(self.rfc.RPL_UNAWAY, ":You are no longer marked as being away")
+                    for room in self.rooms:
+                        self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.user.me} AWAY\r\n")
+
                 self.send_text(text, room_id, target)
 
             elif command == "KICK":
@@ -901,6 +926,42 @@ class Chatujme:
                 # RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
                 self.send(self.rfc.RPL_VERSION, f"ChatujmeGW-{VERSION}.{DEBUG} {self.user.me} :Python {sys.version.split()[0]} on {sys.platform}")
 
+            elif command == "MOTD":
+                # Send MOTD on request
+                self.send(self.rfc.RPL_MOTDSTART, f":- {self.user.me} Message of the Day -")
+                for line in MOTD_LINES:
+                    formatted = line.format(user=self.user.username, host=self.user.me, version=VERSION)
+                    self.send(self.rfc.RPL_MOTD, f":- {formatted}")
+                self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
+
+            elif command == "AWAY":
+                # AWAY [message] - set/unset away status with auto-message to rooms
+                if len(parts) > 1:
+                    # Set away with message
+                    msg_start = line.find(':', 1)
+                    if msg_start != -1:
+                        away_msg = line[msg_start + 1:]
+                    else:
+                        away_msg = ' '.join(parts[1:])
+                    self.user.away_message = away_msg
+                    self.user.away_last_sent = time.time()
+                    self.send(self.rfc.RPL_NOWAWAY, ":You have been marked as being away")
+                    # Notify all rooms (away-notify capability)
+                    for room in self.rooms:
+                        self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.user.me} AWAY :{away_msg}\r\n")
+                    # Send away message to all rooms immediately
+                    for room in self.rooms:
+                        self.send_text(away_msg, room.id, room.id)
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Away message sent to all rooms (will repeat every 30 min)\r\n")
+                else:
+                    # Unset away
+                    self.user.away_message = None
+                    self.user.away_last_sent = 0
+                    self.send(self.rfc.RPL_UNAWAY, ":You are no longer marked as being away")
+                    # Notify all rooms (away-notify capability)
+                    for room in self.rooms:
+                        self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.user.me} AWAY\r\n")
+
             elif command == "QUIT":
                 # Leave all rooms - don't send PART back to client (they're quitting)
                 for room in self.rooms[:]:
@@ -916,6 +977,9 @@ class Chatujme:
             elif command not in ("", "CAP"):
                 self.send(self.rfc.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")
 
+    # Supported IRC capabilities
+    SUPPORTED_CAPS = ["away-notify"]
+
     def handle_cap(self, parts):
         """Handle CAP negotiation for modern IRC clients"""
         if len(parts) < 2:
@@ -923,13 +987,24 @@ class Chatujme:
 
         subcmd = parts[1].upper()
         if subcmd == "LS":
-            # Send empty capability list
-            self.send_raw(f":{self.user.me} CAP * LS :\r\n")
+            # Send supported capabilities
+            caps_str = ' '.join(self.SUPPORTED_CAPS)
+            self.send_raw(f":{self.user.me} CAP * LS :{caps_str}\r\n")
             self.cap_negotiating = True
+        elif subcmd == "LIST":
+            # List enabled capabilities
+            caps_str = ' '.join(self.SUPPORTED_CAPS)
+            self.send_raw(f":{self.user.me} CAP * LIST :{caps_str}\r\n")
         elif subcmd == "REQ":
-            # Reject all capability requests (we don't support any)
+            # Handle capability requests
             caps = ' '.join(parts[2:]).lstrip(':') if len(parts) > 2 else ""
-            self.send_raw(f":{self.user.me} CAP * NAK :{caps}\r\n")
+            requested = caps.split()
+            # Check if all requested caps are supported
+            all_supported = all(cap.lstrip('-') in self.SUPPORTED_CAPS for cap in requested)
+            if all_supported:
+                self.send_raw(f":{self.user.me} CAP * ACK :{caps}\r\n")
+            else:
+                self.send_raw(f":{self.user.me} CAP * NAK :{caps}\r\n")
         elif subcmd == "END":
             self.cap_negotiating = False
             # If we have credentials and not already logged in, try to login
