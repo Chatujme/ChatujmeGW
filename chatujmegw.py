@@ -627,7 +627,21 @@ class Chatujme:
         return re.sub(r"<span style='background:#eded1a'>([^<]+)</span>", r"\1", msg)
 
     def clean_urls(self, msg):
-        return re.sub(r'<a href="([^"]+)" target="_blank">([^<]+)</a>', r"\1", msg)
+        def extract_real_url(match):
+            href = match.group(1)
+            # Extract real URL from redirect links like //link.chatujme.cz/redirect?url=https%3A%2F%2F...
+            if 'link.chatujme.cz/redirect?url=' in href:
+                try:
+                    # Get the url parameter and decode it
+                    url_param = href.split('url=', 1)[1]
+                    return urllib.parse.unquote(url_param)
+                except Exception:
+                    pass
+            # Fix protocol-relative URLs
+            if href.startswith('//'):
+                return 'https:' + href
+            return href
+        return re.sub(r'<a href="([^"]+)" target="_blank">([^<]+)</a>', extract_real_url, msg)
 
     def clean_urls_mailto(self, msg):
         return re.sub(r'<a href="mailto:([^"]+)">([^<]+)</a>', r"\1", msg)
