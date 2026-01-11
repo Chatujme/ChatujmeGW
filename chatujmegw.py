@@ -568,7 +568,8 @@ class GetMessages(threading.Thread):
 
         else:
             # Generic system message as NOTICE
-            clean_msg = re.sub(r'(.*?):\s*', '', msg)
+            # Remove timestamp prefix like "19:10:13: " from the beginning
+            clean_msg = re.sub(r'^\d{1,2}:\d{2}:\d{2}:\s*', '', msg)
             self.inst.send_raw(
                 f":{self.inst.user.me} NOTICE #{room.id} :{clean_msg}\r\n"
             )
