@@ -38,7 +38,7 @@ if sys.platform == 'win32':
 
 PORT = 6667
 BIND = "127.0.0.1"  # Security: localhost only by default, use --listen 0.0.0.0 for external access
-VERSION = "3.0.1"
+VERSION = "3.0.2"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls
