@@ -454,15 +454,23 @@ class GetMessages(threading.Thread):
                         tb.print_exc()
                     self.handle_error(data, room)
 
-                # Idler
-                my_time = time.time()
-                if (my_time - room.idler_lastsend) >= self.inst.user.idler_timer and \
-                   self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
-                    self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Idler message sent\r\n"
-                    )
-                    room.idler_lastsend = time.time()
-                    self.inst.send_text(random.choice(self.inst.user.idler_text), room.id, room.id)
+                # Idler - use sayAgo from API (server-side idle time)
+                if self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
+                    say_ago = data.get('sayAgo', {})
+                    try:
+                        say_ago_seconds = int(say_ago.get('min', 0)) * 60 + int(say_ago.get('sec', 0))
+                    except (ValueError, TypeError):
+                        say_ago_seconds = 0
+
+                    my_time = time.time()
+                    # Send idler message if idle time reached AND cooldown passed (prevent spam)
+                    if say_ago_seconds >= self.inst.user.idler_timer and \
+                       (my_time - room.idler_lastsend) >= self.inst.user.idler_timer:
+                        self.inst.send_raw(
+                            f":{self.inst.user.me} NOTICE #{room.id} :Idler message sent (idle {say_ago_seconds}s)\r\n"
+                        )
+                        room.idler_lastsend = time.time()
+                        self.inst.send_text(random.choice(self.inst.user.idler_text), room.id, room.id)
 
             # Away message repeater (every 30 min)
             if self.inst.user.away_message:
