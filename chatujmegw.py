@@ -1238,6 +1238,45 @@ class Chatujme:
                     else:
                         self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Unknown NickServ command: {subcmd}\r\n")
 
+            elif command == "IDLER":
+                # IDLER [ON|OFF|STATUS|TIME <seconds>|TEXT <text>]
+                # Auto-send message when idle for specified time
+                if len(parts) < 2:
+                    # Show help
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :IDLER - Auto-send message when idle\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  IDLER ON        - Enable idler\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  IDLER OFF       - Disable idler\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  IDLER STATUS    - Show current settings\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  IDLER TIME <s>  - Set idle time in seconds (default: 2400 = 40min)\r\n")
+                    self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  IDLER TEXT <t>  - Set idler message(s), comma-separated\r\n")
+                else:
+                    subcmd = parts[1].upper()
+                    if subcmd == "ON":
+                        self.user.idler_enable = True
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler enabled (time: {self.user.idler_timer}s)\r\n")
+                    elif subcmd == "OFF":
+                        self.user.idler_enable = False
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler disabled\r\n")
+                    elif subcmd == "STATUS":
+                        status = "ON" if self.user.idler_enable else "OFF"
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler: {status}, Time: {self.user.idler_timer}s ({self.user.idler_timer//60}min), Text: {self.user.idler_text}\r\n")
+                    elif subcmd == "TIME" and len(parts) >= 3:
+                        try:
+                            new_time = int(parts[2])
+                            if new_time < 60:
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Minimum idler time is 60 seconds\r\n")
+                            else:
+                                self.user.idler_timer = new_time
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler time set to {new_time}s ({new_time//60}min)\r\n")
+                        except ValueError:
+                            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Invalid time value\r\n")
+                    elif subcmd == "TEXT" and len(parts) >= 3:
+                        text = ' '.join(parts[2:])
+                        self.user.idler_text = [t.strip() for t in text.split(',')]
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler text set to: {self.user.idler_text}\r\n")
+                    else:
+                        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Unknown IDLER subcommand. Use: ON, OFF, STATUS, TIME, TEXT\r\n")
+
             elif command not in ("", "CAP"):
                 self.send(self.rfc.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")
 

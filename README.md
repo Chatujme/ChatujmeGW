@@ -52,7 +52,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | 482 | ERR_CHANOPRIVSNEEDED | Nedostatečná oprávnění |
 
 ### Podporované příkazy
-`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`, `AWAY`, `MOTD`, `NICKSERV`/`NS`
+`NICK`, `PASS`, `USER`, `JOIN`, `PART`, `PRIVMSG`, `NOTICE`, `MODE`, `KICK`, `WHO`, `WHOIS`, `LIST`, `PING`, `PONG`, `QUIT`, `CAP`, `VERSION`, `REGISTER`, `NAMES`, `TOPIC`, `USERHOST`, `AWAY`, `MOTD`, `NICKSERV`/`NS`, `IDLER`
 
 ### OP příkazy
 | Příkaz | Popis |
@@ -60,6 +60,16 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | `KICK #room nick :důvod` | Vykopnutí uživatele z místnosti |
 | `MODE #room +o nick` | Předání správce (`/predej`) |
 | `TOPIC #room :nový popis` | Změna popisu místnosti (vyžaduje oprávnění) |
+
+### IDLER příkazy
+| Příkaz | Popis |
+|--------|-------|
+| `IDLER` | Zobrazí nápovědu |
+| `IDLER ON` | Zapne idler |
+| `IDLER OFF` | Vypne idler |
+| `IDLER STATUS` | Zobrazí aktuální nastavení |
+| `IDLER TIME <sekundy>` | Nastaví čas nečinnosti (default: 2400 = 40min) |
+| `IDLER TEXT <texty>` | Nastaví zprávy idleru (čárkou oddělené) |
 
 ### CTCP příkazy
 `VERSION`, `PING`, `TIME`, `ACTION` (/me)
