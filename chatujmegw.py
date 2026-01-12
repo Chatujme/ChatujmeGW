@@ -1325,8 +1325,8 @@ class Chatujme:
                     elif subcmd == "TIME" and len(parts) >= 3:
                         try:
                             new_time = int(parts[2])
-                            if new_time < 60:
-                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Minimum idler time is 60 seconds\r\n")
+                            if new_time < 1800:  # 30 minutes minimum
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Minimum idler time is 1800 seconds (30 minutes)\r\n")
                             else:
                                 self.user.idler_timer = new_time
                                 self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler time set to {new_time}s ({new_time//60}min)\r\n")
