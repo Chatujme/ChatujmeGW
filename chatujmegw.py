@@ -717,7 +717,12 @@ class Chatujme:
 
     def post_url(self, url, postdata, retry_count=0):
         """POST URL with retry limit to prevent infinite loops"""
-        self.user.url_fetcher.addheaders = [('User-agent', UA)]
+        headers = [('User-agent', UA)]
+        if self.user.client_version:
+            headers.append(('X-IRC-Client', self.user.client_version))
+        if self.is_public_ip(self.address):
+            headers.append(('X-IRC-IP', self.address))
+        self.user.url_fetcher.addheaders = headers
         try:
             response = self.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=API_TIMEOUT)
             return response.read().decode('utf-8')
@@ -824,10 +829,12 @@ class Chatujme:
     def join_to_room(self, room_id, key=None):
         url = f"{self.system.url}/join?id={room_id}"
 
-        # Add X-IRC-Client header with client version if available
+        # Add X-IRC-Client and X-IRC-IP headers
         headers = [('User-agent', UA)]
         if self.user.client_version:
             headers.append(('X-IRC-Client', self.user.client_version))
+        if self.is_public_ip(self.address):
+            headers.append(('X-IRC-IP', self.address))
 
         self.user.url_fetcher.addheaders = headers
         try:
@@ -867,7 +874,12 @@ class Chatujme:
 
     def get_url_no_retry(self, url):
         """Get URL without retry on failure - used for disconnect cleanup"""
-        self.user.url_fetcher.addheaders = [('User-agent', UA)]
+        headers = [('User-agent', UA)]
+        if self.user.client_version:
+            headers.append(('X-IRC-Client', self.user.client_version))
+        if self.is_public_ip(self.address):
+            headers.append(('X-IRC-IP', self.address))
+        self.user.url_fetcher.addheaders = headers
         try:
             response = self.user.url_fetcher.open(url, timeout=5)
             return response.read().decode('utf-8')
