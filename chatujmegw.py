@@ -75,13 +75,14 @@ def sanitize_irc(text):
     """
     Remove CRLF, null bytes and other control characters from IRC messages.
     Prevents IRC protocol injection attacks.
+    Preserves \x01 (CTCP marker) and \t (tab).
     """
     if not text:
         return ""
     # Remove CR, LF, null bytes
     text = text.replace('\r', '').replace('\n', '').replace('\0', '')
-    # Remove other potentially dangerous control characters (0x00-0x1F except tab)
-    return ''.join(c for c in text if ord(c) >= 32 or c == '\t')
+    # Remove other potentially dangerous control characters (0x00-0x1F except CTCP marker and tab)
+    return ''.join(c for c in text if ord(c) >= 32 or c == '\t' or c == '\x01')
 
 
 def sanitize_log(text):
