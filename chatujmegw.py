@@ -38,7 +38,7 @@ if sys.platform == 'win32':
 
 PORT = 6667
 BIND = "127.0.0.1"  # Security: localhost only by default, use --listen 0.0.0.0 for external access
-VERSION = "3.0.2"
+VERSION = "3.0.3"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls
@@ -443,6 +443,10 @@ class GetMessages(threading.Thread):
                                 self.inst.send_raw(
                                     f":{self.inst.make_hostmask(mess['nick'], room.id)} PRIVMSG {mess['komu']} :{msg}\r\n"
                                 )
+                        elif mess["typ"] == 10:  # ACTION (/me command)
+                            self.inst.send_raw(
+                                f":{self.inst.make_hostmask(mess['nick'], room.id)} PRIVMSG #{room.id} :\x01ACTION {msg}\x01\r\n"
+                            )
 
                 except Exception as e:
                     if DEBUG:
@@ -1040,6 +1044,21 @@ class Chatujme:
                         # Reply with current time
                         time_str = time.strftime("%a %b %d %H:%M:%S %Y")
                         self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :\x01TIME {time_str}\x01\r\n")
+                        continue
+                    elif ctcp_cmd == "ACTION":
+                        # Handle /me command - convert to Chatujme.cz /me format
+                        action_text = text.strip('\x01')[7:]  # Get text after "ACTION "
+                        if action_text and target.startswith('#'):
+                            room_id = target.lstrip('#')
+                            room = self.is_in_room(room_id, True)
+                            if room:
+                                room.idler_lastsend = time.time()
+                                self.send_text(f"/me {action_text}", room_id, target)
+                                # Auto-disable away
+                                if self.user.away_message:
+                                    self.user.away_message = None
+                                    self.user.away_last_sent = 0
+                                    self.send(self.rfc.RPL_UNAWAY, ":You are no longer marked as being away")
                         continue
                     # Other CTCP commands are ignored
 

@@ -62,7 +62,7 @@ Gateway implementuje subset [RFC 1459](https://tools.ietf.org/html/rfc1459):
 | `TOPIC #room :nový popis` | Změna popisu místnosti (vyžaduje oprávnění) |
 
 ### CTCP příkazy
-`VERSION`, `PING`, `TIME`
+`VERSION`, `PING`, `TIME`, `ACTION` (/me)
 
 ## Spuštění
 
