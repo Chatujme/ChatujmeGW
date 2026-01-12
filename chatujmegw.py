@@ -467,11 +467,13 @@ class GetMessages(threading.Thread):
                 if self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
                     my_time = time.time()
                     cooldown_elapsed = my_time - room.idler_lastsend
+                    # Cooldown is 60s to prevent spam, not the full timer
+                    idler_cooldown = 60
                     if DEBUG >= 2:
                         log(f"[IDLER] #{room.id}: sayAgo={say_ago_seconds}s, timer={self.inst.user.idler_timer}s, cooldown={int(cooldown_elapsed)}s")
                     # Send idler message if idle time reached AND cooldown passed (prevent spam)
                     if say_ago_seconds >= self.inst.user.idler_timer and \
-                       cooldown_elapsed >= self.inst.user.idler_timer:
+                       cooldown_elapsed >= idler_cooldown:
                         self.inst.send_raw(
                             f":{self.inst.user.me} NOTICE #{room.id} :Idler message sent (idle {say_ago_seconds}s)\r\n"
                         )
