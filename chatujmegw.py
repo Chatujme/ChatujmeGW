@@ -293,6 +293,7 @@ class RoomStruct:
         self.last_mess = ""
         self.first_load = True
         self.idler_lastsend = 0
+        self.say_ago_seconds = 0  # Server-side idle time from API
 
 
 def log(text, sanitize=True):
@@ -456,13 +457,14 @@ class GetMessages(threading.Thread):
                     self.handle_error(data, room)
 
                 # Idler - use sayAgo from API (server-side idle time)
-                if self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
-                    say_ago = data.get('sayAgo', {})
-                    try:
-                        say_ago_seconds = int(say_ago.get('min', 0)) * 60 + int(say_ago.get('sec', 0))
-                    except (ValueError, TypeError):
-                        say_ago_seconds = 0
+                say_ago = data.get('sayAgo', {})
+                try:
+                    say_ago_seconds = int(say_ago.get('min', 0)) * 60 + int(say_ago.get('sec', 0))
+                except (ValueError, TypeError):
+                    say_ago_seconds = 0
+                room.say_ago_seconds = say_ago_seconds  # Store for STATUS command
 
+                if self.inst.user.idler_timer != 0 and self.inst.user.idler_enable:
                     my_time = time.time()
                     # Send idler message if idle time reached AND cooldown passed (prevent spam)
                     if say_ago_seconds >= self.inst.user.idler_timer and \
@@ -1314,13 +1316,12 @@ class Chatujme:
                     elif subcmd == "STATUS":
                         status = "ON" if self.user.idler_enable else "OFF"
                         self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler: {status}, Time: {self.user.idler_timer}s ({self.user.idler_timer//60}min), Text: {self.user.idler_text}\r\n")
-                        # Show per-channel idler status
+                        # Show per-channel idler status using server-side sayAgo
                         if self.rooms:
-                            now = time.time()
                             for room in self.rooms:
-                                elapsed = int(now - room.idler_lastsend)
-                                remaining = max(0, self.user.idler_timer - elapsed)
-                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  #{room.id}: {remaining}s remaining ({remaining//60}min {remaining%60}s)\r\n")
+                                idle = room.say_ago_seconds
+                                remaining = max(0, self.user.idler_timer - idle)
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  #{room.id}: idle {idle}s, {remaining}s remaining ({remaining//60}min {remaining%60}s)\r\n")
                     elif subcmd == "TIME" and len(parts) >= 3:
                         try:
                             new_time = int(parts[2])
