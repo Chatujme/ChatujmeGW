@@ -686,11 +686,23 @@ class Chatujme:
         # New format: <img src='url' alt='text' aria-label='desc' title='desc'>
         return re.sub(r"<img src='(.+?smiles/([^.]+).gif)' alt='(.+?)'[^>]*>", pattern, msg)
 
+    def is_public_ip(self, ip):
+        """Check if IP is public (not localhost or private range)"""
+        import ipaddress
+        try:
+            addr = ipaddress.ip_address(ip)
+            return not (addr.is_loopback or addr.is_private or addr.is_reserved)
+        except ValueError:
+            return False
+
     def get_url(self, url, retry_count=0):
         """Fetch URL with retry limit to prevent infinite loops"""
         headers = [('User-agent', UA)]
         if self.user.client_version:
             headers.append(('X-IRC-Client', self.user.client_version))
+        # Send client IP if it's a public address
+        if self.is_public_ip(self.address):
+            headers.append(('X-IRC-IP', self.address))
         self.user.url_fetcher.addheaders = headers
         try:
             response = self.user.url_fetcher.open(url, timeout=API_TIMEOUT)
