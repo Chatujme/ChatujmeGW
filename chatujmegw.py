@@ -275,6 +275,7 @@ class User:
         self.away_interval = 1800  # 30 minutes
         self.last_ping_sent = 0  # Timestamp of last server PING
         self.ping_interval = 60  # Send PING every 60 seconds
+        self.client_version = None  # IRC client version from CTCP VERSION reply
 
 
 class UserInRoom:
@@ -796,6 +797,9 @@ class Chatujme:
             self.send(self.rfc.RPL_MOTD, f":- {formatted}")
         self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
 
+        # Request client version via CTCP VERSION
+        self.send_raw(f":{self.user.me} PRIVMSG {self.user.nick} :\x01VERSION\x01\r\n")
+
     def is_in_room(self, room, rtn=False):
         for croom in self.rooms:
             if int(room) == int(croom.id):
@@ -1036,9 +1040,21 @@ class Chatujme:
                     text = text[:MAX_MESSAGE_LENGTH]
                     self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Message truncated to {MAX_MESSAGE_LENGTH} characters\r\n")
 
-                # Handle CTCP requests (wrapped in \x01)
+                # Handle CTCP requests/replies (wrapped in \x01)
                 if text.startswith('\x01') and text.endswith('\x01'):
-                    ctcp_cmd = text.strip('\x01').split(' ')[0].upper()
+                    ctcp_content = text.strip('\x01')
+                    ctcp_parts = ctcp_content.split(' ', 1)
+                    ctcp_cmd = ctcp_parts[0].upper()
+
+                    # NOTICE with CTCP = reply from client
+                    if command == "NOTICE":
+                        if ctcp_cmd == "VERSION" and len(ctcp_parts) > 1:
+                            # Client sent VERSION reply - store it
+                            self.user.client_version = ctcp_parts[1]
+                            log(f"Client version for {self.user.nick}: {self.user.client_version}")
+                        continue
+
+                    # PRIVMSG with CTCP = request to server
                     if ctcp_cmd == "VERSION":
                         # Reply with CTCP VERSION response
                         version_reply = f"ChatujmeGW {VERSION} - Python {sys.version.split()[0]} on {sys.platform}"
