@@ -688,7 +688,10 @@ class Chatujme:
 
     def get_url(self, url, retry_count=0):
         """Fetch URL with retry limit to prevent infinite loops"""
-        self.user.url_fetcher.addheaders = [('User-agent', UA)]
+        headers = [('User-agent', UA)]
+        if self.user.client_version:
+            headers.append(('X-IRC-Client', self.user.client_version))
+        self.user.url_fetcher.addheaders = headers
         try:
             response = self.user.url_fetcher.open(url, timeout=API_TIMEOUT)
             return response.read().decode('utf-8')
