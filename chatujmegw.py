@@ -898,6 +898,10 @@ class Chatujme:
         return ""
 
     def send_text(self, text, room_id, target):
+        # Rate limit only for messages to rooms (not internal calls)
+        if not self.check_command_rate():
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
+            return {"code": 429, "message": "Rate limited"}
         postdata = f"roomId={room_id}&text={urllib.parse.quote_plus(text)}&target={target}"
         response = self.post_url(f"{self.system.url}/post-text", postdata)
         try:
@@ -930,11 +934,6 @@ class Chatujme:
             if len(line) > MAX_LINE_LENGTH:
                 log(f"[SECURITY] Line too long from {self.address} ({len(line)} chars), truncating")
                 line = line[:MAX_LINE_LENGTH]
-
-            # Security: Check command rate limit
-            if not self.check_command_rate():
-                self.send_raw(f":{self.user.me} NOTICE * :Rate limit exceeded. Slow down.\r\n")
-                continue
 
             parts = line.split(" ")
             command = parts[0].upper()
@@ -1315,6 +1314,13 @@ class Chatujme:
                     elif subcmd == "STATUS":
                         status = "ON" if self.user.idler_enable else "OFF"
                         self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Idler: {status}, Time: {self.user.idler_timer}s ({self.user.idler_timer//60}min), Text: {self.user.idler_text}\r\n")
+                        # Show per-channel idler status
+                        if self.rooms:
+                            now = time.time()
+                            for room in self.rooms:
+                                elapsed = int(now - room.idler_lastsend)
+                                remaining = max(0, self.user.idler_timer - elapsed)
+                                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :  #{room.id}: {remaining}s remaining ({remaining//60}min {remaining%60}s)\r\n")
                     elif subcmd == "TIME" and len(parts) >= 3:
                         try:
                             new_time = int(parts[2])
