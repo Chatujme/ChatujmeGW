@@ -807,8 +807,20 @@ class Chatujme:
         return False
 
     def join_to_room(self, room_id, key=None):
-        response = self.get_url(f"{self.system.url}/join?id={room_id}")
-        return json.loads(response)
+        url = f"{self.system.url}/join?id={room_id}"
+
+        # Add X-IRC-Client header with client version if available
+        headers = [('User-agent', UA)]
+        if self.user.client_version:
+            headers.append(('X-IRC-Client', self.user.client_version))
+
+        self.user.url_fetcher.addheaders = headers
+        try:
+            response = self.user.url_fetcher.open(url, timeout=API_TIMEOUT)
+            return json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            log(f"[JOIN] Error: {e}")
+            return {"code": 500, "message": str(e)}
 
     def get_room_users(self, room_id):
         response = self.get_url(f"{self.system.url}/get-users?id={room_id}")
