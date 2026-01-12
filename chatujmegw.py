@@ -1129,6 +1129,27 @@ class Chatujme:
 
                 is_pm = not target.startswith('#')
 
+                # Handle /idler command in channel - respond to channel instead of server window
+                if not is_pm and text.lower().startswith("/idler"):
+                    idler_parts = text.split()
+                    room_id = target.lstrip('#')
+                    if len(idler_parts) < 2 or idler_parts[1].lower() == "status":
+                        # Show status in channel
+                        status = "ON" if self.user.idler_enable else "OFF"
+                        self.send_raw(f":{self.user.me} NOTICE {target} :Idler: {status}, Time: {self.user.idler_timer}s ({self.user.idler_timer//60}min)\r\n")
+                        room = self.is_in_room(room_id, True)
+                        if room:
+                            idle = room.say_ago_seconds
+                            remaining = max(0, self.user.idler_timer - idle)
+                            self.send_raw(f":{self.user.me} NOTICE {target} :Idle: {idle}s, remaining: {remaining}s ({remaining//60}min {remaining%60}s)\r\n")
+                    elif idler_parts[1].lower() == "on":
+                        self.user.idler_enable = True
+                        self.send_raw(f":{self.user.me} NOTICE {target} :Idler enabled (time: {self.user.idler_timer}s)\r\n")
+                    elif idler_parts[1].lower() == "off":
+                        self.user.idler_enable = False
+                        self.send_raw(f":{self.user.me} NOTICE {target} :Idler disabled\r\n")
+                    continue
+
                 # Handle NickServ REGISTER command
                 if target.lower() == "nickserv" and text.lower().startswith("register"):
                     self.send_raw(f":NickServ!services@{self.user.me} NOTICE {self.user.nick} :Registration is only available via web.\r\n")
