@@ -820,22 +820,7 @@ class Chatujme:
                 self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
                 return False
             elif code in (200, 201):
-                # Ghost: kill any existing connection with the same nick
-                nick_lower = self.user.nick.lower()
-                with active_connections_lock:
-                    old_handler = active_connections.get(nick_lower)
-                    if old_handler is not None and old_handler is not self.parent:
-                        log(f"[GHOST] Killing old connection for {self.user.nick} (new login from {self.address})")
-                        try:
-                            old_handler.instance.send_raw(
-                                f"ERROR :Closing link: {self.user.nick} (Overridden by new connection)\r\n"
-                            )
-                        except Exception:
-                            pass
-                        old_handler.running = False
-                        if old_handler.instance:
-                            old_handler.instance.connection = False
-                    active_connections[nick_lower] = self.parent
+                # Ghost mechanism deferred to JOIN (probes would kill real connections)
                 self.send_welcome()
                 log(f"User logged in: {self.user.username}")
                 return True
@@ -1515,6 +1500,23 @@ class Chatujme:
             err_msg = data.get('message', f'Unknown error (code {code})')
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error joining #{room}: {err_msg}\r\n")
         else:
+            # Ghost: activate connection and kill duplicates on first real JOIN
+            nick_lower = self.user.nick.lower()
+            with active_connections_lock:
+                old_handler = active_connections.get(nick_lower)
+                if old_handler is not None and old_handler is not self.parent:
+                    log(f"[GHOST] Killing old connection for {self.user.nick} (new JOIN from {self.address})")
+                    try:
+                        old_handler.instance.send_raw(
+                            f"ERROR :Closing link: {self.user.nick} (Overridden by new connection)\r\n"
+                        )
+                    except Exception:
+                        pass
+                    old_handler.running = False
+                    if old_handler.instance:
+                        old_handler.instance.connection = False
+                active_connections[nick_lower] = self.parent
+
             users_data = self.get_room_users(room)
             users = " ".join([f"{self.user_op_status(u)}{u['nick']}" for u in users_data])
 
