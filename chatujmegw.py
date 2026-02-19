@@ -426,6 +426,9 @@ class GetMessages(threading.Thread):
                             log(f"[API MSG] id={mess['id']} typ={mess['typ']} nick={mess['nick']} msg={mess['zprava'][:50]}...")
                         if int(room.last_id) >= int(mess['id']):
                             continue
+                        room.last_id = mess['id']
+                        room.last_mess = mess['zprava']
+
                         # Skip messages from ourselves, but NOT system messages (typ 2)
                         # System messages should always be processed (kicks, joins, etc.)
                         if mess["typ"] != 2:
@@ -433,9 +436,6 @@ class GetMessages(threading.Thread):
                                 continue
                             if mess['nick'].lower() == self.inst.user.nick.lower():
                                 continue
-
-                        room.last_id = mess['id']
-                        room.last_mess = mess['zprava']
 
                         if room.first_load:
                             continue
