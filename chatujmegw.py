@@ -70,6 +70,11 @@ thread_lock = threading.Lock()
 connection_counts = {}  # IP -> list of connection timestamps
 connection_counts_lock = threading.Lock()
 
+# Active connections registry: nick (lowercase) -> SocketHandler instance
+# Used for duplicate nick detection (ghost) and PONG timeout enforcement
+active_connections = {}  # nick_lower -> SocketHandler
+active_connections_lock = threading.Lock()
+
 
 def sanitize_irc(text):
     """
@@ -122,6 +127,18 @@ def check_rate_limit(ip):
 
         connection_counts[ip].append(now)
         return True
+
+
+def uncount_rate_limit(ip):
+    """
+    Remove one rate-limit entry for an IP.
+    Called when a short-lived connection (probe) disconnects quickly,
+    so that health-check probes don't exhaust the rate limit budget.
+    """
+    with connection_counts_lock:
+        entries = connection_counts.get(ip)
+        if entries:
+            entries.pop()  # remove the most recent entry
 
 
 def safe_username_hash(username):
@@ -275,6 +292,9 @@ class User:
         self.away_interval = 1800  # 30 minutes
         self.last_ping_sent = 0  # Timestamp of last server PING
         self.ping_interval = 60  # Send PING every 60 seconds
+        self.last_pong_received = 0  # Timestamp of last PONG from client
+        self.pong_timeout = 120  # Disconnect if no PONG within 120 seconds
+        self.pending_ping_token = None  # Token of the last PING sent (for matching)
         self.client_version = None  # IRC client version from CTCP VERSION reply
 
 
@@ -492,12 +512,23 @@ class GetMessages(threading.Thread):
                     self.inst.reload_users(room.id)
                     room.first_load = False
 
-            # Server-side PING to keep connection alive
+            # Server-side PING to keep connection alive + PONG timeout check
             my_time = time.time()
             if (my_time - self.inst.user.last_ping_sent) >= self.inst.user.ping_interval:
+                # Check PONG timeout: if we sent a PING and got no PONG back
+                if (self.inst.user.pending_ping_token is not None
+                        and self.inst.user.last_ping_sent > 0
+                        and (my_time - self.inst.user.last_ping_sent) >= self.inst.user.pong_timeout):
+                    log(f"[TIMEOUT] {self.inst.user.nick}: no PONG received within {self.inst.user.pong_timeout}s, disconnecting")
+                    self.inst.send_raw(f"ERROR :Closing link: PONG timeout ({self.inst.user.pong_timeout}s)\r\n")
+                    self.inst.parent.running = False
+                    self.inst.connection = False
+                    return
+
                 ping_token = str(int(my_time))
                 self.inst.send_raw(f"PING :{ping_token}\r\n")
                 self.inst.user.last_ping_sent = my_time
+                self.inst.user.pending_ping_token = ping_token
 
             time.sleep(self.inst.user.timer)
 
@@ -789,6 +820,22 @@ class Chatujme:
                 self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
                 return False
             elif code in (200, 201):
+                # Ghost: kill any existing connection with the same nick
+                nick_lower = self.user.nick.lower()
+                with active_connections_lock:
+                    old_handler = active_connections.get(nick_lower)
+                    if old_handler is not None and old_handler is not self.parent:
+                        log(f"[GHOST] Killing old connection for {self.user.nick} (new login from {self.address})")
+                        try:
+                            old_handler.instance.send_raw(
+                                f"ERROR :Closing link: {self.user.nick} (Overridden by new connection)\r\n"
+                            )
+                        except Exception:
+                            pass
+                        old_handler.running = False
+                        if old_handler.instance:
+                            old_handler.instance.connection = False
+                    active_connections[nick_lower] = self.parent
                 self.send_welcome()
                 log(f"User logged in: {self.user.username}")
                 return True
@@ -1011,7 +1058,9 @@ class Chatujme:
                     pass
 
             elif command == "PONG":
-                pass  # Ignore PONG responses
+                # Track PONG for timeout detection
+                self.user.last_pong_received = time.time()
+                self.user.pending_ping_token = None
 
             elif command == "LIST":
                 rooms = self.system.get_rooms()
@@ -1502,17 +1551,22 @@ class Chatujme:
 
 
 class SocketHandler(threading.Thread):
+    PROBE_THRESHOLD = 5  # Connections shorter than 5s are considered probes
+
     def __init__(self, sock, address):
         threading.Thread.__init__(self)
         self.socket = sock
         self.address = address
         self.running = True
         self.daemon = True
+        self.instance = None  # Set in run(), used by ghost mechanism
+        self.connect_time = time.time()  # Track connection start for probe detection
         self.recv_buffer = ""  # Security: Buffer for incomplete data
 
     def run(self):
         log(f"Connection accepted from {self.address[0]}")
         instance = Chatujme(self.socket, self.address[0], self)
+        self.instance = instance  # Store for ghost mechanism
         instance.send_raw(f":{instance.user.me} NOTICE * :Connected from {self.address[0]}, waiting for login.\r\n")
 
         while self.running:
@@ -1585,6 +1639,20 @@ class SocketHandler(threading.Thread):
         for room in instance.rooms[:]:
             instance.part(room.id, send_to_client=False)
         instance.connection = False
+
+        # Remove from active connections registry
+        if instance.user.nick:
+            nick_lower = instance.user.nick.lower()
+            with active_connections_lock:
+                if active_connections.get(nick_lower) is self:
+                    del active_connections[nick_lower]
+
+        # Probe-friendly rate limiting: short-lived connections (probes, health checks)
+        # don't count against the rate limit budget
+        connection_duration = time.time() - self.connect_time
+        if connection_duration < self.PROBE_THRESHOLD:
+            uncount_rate_limit(self.address[0])
+
         log(f"Connection from {self.address[0]} closed.")
         try:
             self.socket.close()
