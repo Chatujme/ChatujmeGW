@@ -17,10 +17,13 @@ dist/*
 env/
 venv/
 
-# IDE
-.idea/
-.vscode/
+# Editor/IDE local configs
+.[a-z]*/
+!.git/
+!.github/
 *.swp
+/[A-Z]*.md
+!/README.md
 
 # Testing
 .pytest_cache/
@@ -46,9 +49,6 @@ docs/
 # Legacy
 release/
 *.spec
-
-# Project specific
-CLAUDE.md
 
 # SSL/TLS certificates and keys
 *.pem
