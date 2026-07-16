@@ -20,7 +20,7 @@ jobs:
 
       - name: Check VERSION matches tag
         shell: bash
-        run: grep -qF "VERSION = \"${GITHUB_REF_NAME#v}\"" chatujmegw.py
+        run: grep -qF "VERSION = \"${GITHUB_REF_NAME#v}\"" gw/config.py
 
       - name: Build exe
         run: |

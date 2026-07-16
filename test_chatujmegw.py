@@ -6,13 +6,13 @@ Unit tests for ChatujmeGW. Stdlib only, no network.
 Run: python -m unittest test_chatujmegw -v
 """
 
-import sys
 import unittest
 from unittest import mock
 
-# The module parses argv at import time
-sys.argv = ['chatujmegw']
-import chatujmegw as gw
+from gw import config
+from gw.client import Chatujme
+from gw.models import RoomStruct
+from gw.util import sanitize_irc, sanitize_log, validate_nick, validate_room_id
 
 
 class FakeSocket:
@@ -39,46 +39,46 @@ class FakeHandler:
 
 def make_inst():
     handler = FakeHandler()
-    inst = gw.Chatujme(FakeSocket(), '127.0.0.1', handler)
+    inst = Chatujme(FakeSocket(), '127.0.0.1', handler)
     handler.instance = inst
     return inst
 
 
 class TestSanitizers(unittest.TestCase):
     def test_sanitize_irc_strips_crlf_and_null(self):
-        self.assertEqual(gw.sanitize_irc("a\r\nb\0c"), "abc")
+        self.assertEqual(sanitize_irc("a\r\nb\0c"), "abc")
 
     def test_sanitize_irc_keeps_ctcp_and_tab(self):
-        self.assertEqual(gw.sanitize_irc("\x01ACTION hi\x01\tx"), "\x01ACTION hi\x01\tx")
+        self.assertEqual(sanitize_irc("\x01ACTION hi\x01\tx"), "\x01ACTION hi\x01\tx")
 
     def test_sanitize_irc_strips_control_chars(self):
-        self.assertEqual(gw.sanitize_irc("a\x02b\x1fc"), "abc")
+        self.assertEqual(sanitize_irc("a\x02b\x1fc"), "abc")
 
     def test_sanitize_log_masks_password(self):
-        self.assertIn("password=***", gw.sanitize_log("username=x&password=tajne123"))
-        self.assertNotIn("tajne123", gw.sanitize_log("username=x&password=tajne123"))
+        self.assertIn("password=***", sanitize_log("username=x&password=tajne123"))
+        self.assertNotIn("tajne123", sanitize_log("username=x&password=tajne123"))
 
     def test_sanitize_log_masks_pass_command(self):
-        self.assertNotIn("secret", gw.sanitize_log("PASS secret"))
+        self.assertNotIn("secret", sanitize_log("PASS secret"))
 
     def test_sanitize_log_masks_tokens(self):
-        self.assertNotIn("abc123", gw.sanitize_log("token=abc123"))
+        self.assertNotIn("abc123", sanitize_log("token=abc123"))
 
 
 class TestValidators(unittest.TestCase):
     def test_valid_nicks(self):
         for nick in ("test2", "LuRy-x", "abcd", "a" * 23):
-            self.assertTrue(gw.validate_nick(nick), nick)
+            self.assertTrue(validate_nick(nick), nick)
 
     def test_invalid_nicks(self):
         for nick in ("", "abc", "a" * 24, "1abc", "-abc", "_abc", "ab.cd", "ab cd", "háčky"):
-            self.assertFalse(gw.validate_nick(nick), nick)
+            self.assertFalse(validate_nick(nick), nick)
 
     def test_room_id(self):
-        self.assertTrue(gw.validate_room_id("15"))
-        self.assertTrue(gw.validate_room_id(999999))
+        self.assertTrue(validate_room_id("15"))
+        self.assertTrue(validate_room_id(999999))
         for bad in ("abc", "", None, "0", "-1", "1000000", "12&x=1"):
-            self.assertFalse(gw.validate_room_id(bad), repr(bad))
+            self.assertFalse(validate_room_id(bad), repr(bad))
 
 
 class TestCleaners(unittest.TestCase):
@@ -167,7 +167,7 @@ class TestPartCrash(unittest.TestCase):
         inst = make_inst()
         inst.user.login = True
         inst.user.nick = "test2"
-        room = gw.RoomStruct()
+        room = RoomStruct()
         room.id = 15
         inst.rooms.append(room)
         inst.parse("PART #abc\r\n", 0)  # must not raise
@@ -178,7 +178,7 @@ class TestPartCrash(unittest.TestCase):
     def test_names_nonnumeric_does_not_raise(self):
         inst = make_inst()
         inst.user.login = True
-        room = gw.RoomStruct()
+        room = RoomStruct()
         room.id = 15
         inst.rooms.append(room)
         inst.parse("NAMES #abc\r\n", 0)  # must not raise
@@ -186,7 +186,7 @@ class TestPartCrash(unittest.TestCase):
 
     def test_is_in_room_garbage(self):
         inst = make_inst()
-        room = gw.RoomStruct()
+        room = RoomStruct()
         room.id = 15
         inst.rooms.append(room)
         self.assertFalse(inst.is_in_room("abc"))
@@ -245,12 +245,29 @@ class TestPingKeepalive(unittest.TestCase):
         self.assertEqual(inst.user.pending_ping_token, token)
 
 
+class TestVersion(unittest.TestCase):
+    # Regression: module split once rewrote "VERSION" string literals to "config.VERSION"
+    def test_version_command(self):
+        inst = make_inst()
+        inst.user.login = True
+        inst.user.nick = "test2"
+        inst.parse("VERSION\r\n", 0)
+        self.assertIn(" 351 ", inst.socket.sent.decode('utf-8'))
+
+    def test_ctcp_version_request(self):
+        inst = make_inst()
+        inst.user.login = True
+        inst.user.nick = "test2"
+        inst.parse("PRIVMSG test2 :\x01VERSION\x01\r\n", 0)
+        self.assertIn("\x01VERSION ChatujmeGW", inst.socket.sent.decode('utf-8'))
+
+
 class TestRateLimit(unittest.TestCase):
     def test_api_commands_rate_limited(self):
         inst = make_inst()
         inst.user.login = True
         inst.user.nick = "test2"
-        inst.user.command_timestamps = [1e12] * gw.MAX_COMMANDS_PER_SECOND
+        inst.user.command_timestamps = [1e12] * config.MAX_COMMANDS_PER_SECOND
         with mock.patch('time.time', return_value=1e12), \
                 mock.patch.object(inst.system, 'get_rooms') as api:
             inst.parse("LIST\r\n", 0)

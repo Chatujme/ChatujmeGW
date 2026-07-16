@@ -39,6 +39,25 @@ Místnosti se adresují číslem: `/join #12345` (číslo místnosti z webu).
 - **Python** 3.8+
 - Žádné externí závislosti (pouze stdlib)
 
+### Struktura kódu
+
+| Soubor | Obsah |
+|--------|-------|
+| `chatujmegw.py` | CLI entry point (argparse, start serveru) |
+| `gw/config.py` | Konstanty a runtime nastavení |
+| `gw/util.py` | Logování, sanitizace, validace |
+| `gw/state.py` | Sdílený stav (registry spojení, rate limiting) |
+| `gw/models.py` | Datové třídy (`User`, `RoomStruct`) |
+| `gw/client.py` | IRC protokol + volání Chatujme API |
+| `gw/poller.py` | Vlákna (message poller, janitor) |
+| `gw/server.py` | TCP/SSL listenery |
+
+### Testy
+
+```bash
+python -m unittest test_chatujmegw -v
+```
+
 ### Spuštění
 
 ```bash
@@ -60,7 +79,7 @@ python3 chatujmegw.py --port 6667 --ssl-port 6697 --ssl-cert cert.pem --ssl-key 
 | Parametr | Popis | Výchozí |
 |----------|-------|---------|
 | `--port` | Port pro naslouchání | `6667` |
-| `--listen` | Bind adresa | `0.0.0.0` |
+| `--listen` | Bind adresa | `127.0.0.1` (pouze localhost; pro přístup zvenčí `0.0.0.0`) |
 | `--debug` | Debug úroveň (0–2) | `0` |
 | `--ssl` | SSL/TLS na hlavním portu | — |
 | `--ssl-port` | Druhý port pro SSL (dual-port mód) | — |
