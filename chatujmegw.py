@@ -13,7 +13,6 @@
   rfc https://tools.ietf.org/html/rfc1459
 """
 
-import copy
 import io
 import os
 import re
@@ -37,8 +36,8 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 PORT = 6667
-BIND = "127.0.0.1"  # Security: localhost only by default, use --listen 0.0.0.0 for external access
-VERSION = "3.0.4"
+BIND = "0.0.0.0"  # Overridden by --listen
+VERSION = "3.0.5"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls
@@ -59,6 +58,7 @@ MAX_MESSAGE_LENGTH = 500  # Max message content length
 MAX_CONNECTIONS_PER_IP = 5  # Max simultaneous connections per IP
 CONNECTION_WINDOW = 60  # Rate limit window in seconds
 MAX_COMMANDS_PER_SECOND = 10  # Max commands per second per connection
+MAX_CLIENTS = 378  # Max simultaneous client connections
 
 # Security: API timeout
 API_TIMEOUT = 10  # Reduced from 30 seconds
@@ -139,15 +139,6 @@ def uncount_rate_limit(ip):
         entries = connection_counts.get(ip)
         if entries:
             entries.pop()  # remove the most recent entry
-
-
-def safe_username_hash(username):
-    """
-    Create safe filename from username using hash.
-    Prevents path traversal attacks.
-    """
-    import hashlib
-    return hashlib.sha256(username.lower().encode('utf-8')).hexdigest()[:16]
 
 
 def validate_nick(nick):
@@ -414,6 +405,9 @@ class GetMessages(threading.Thread):
                             if croom:
                                 self.inst.rooms.remove(croom)
                                 self.inst.send_raw(f":{self.inst.user.nick} PART #{room.id}\r\n")
+                        elif error_code == 401:
+                            # Session expired - re-login and retry next poll
+                            self.inst.relogin()
                         continue
                 except Exception:
                     if DEBUG:
@@ -474,7 +468,6 @@ class GetMessages(threading.Thread):
                 except Exception as e:
                     if DEBUG:
                         tb.print_exc()
-                    self.handle_error(data, room)
 
                 # Idler - use sayAgo from API (server-side idle time)
                 say_ago = data.get('sayAgo', {})
@@ -513,22 +506,12 @@ class GetMessages(threading.Thread):
                     room.first_load = False
 
             # Server-side PING to keep connection alive + PONG timeout check
-            my_time = time.time()
-            if (my_time - self.inst.user.last_ping_sent) >= self.inst.user.ping_interval:
-                # Check PONG timeout: if we sent a PING and got no PONG back
-                if (self.inst.user.pending_ping_token is not None
-                        and self.inst.user.last_ping_sent > 0
-                        and (my_time - self.inst.user.last_ping_sent) >= self.inst.user.pong_timeout):
-                    log(f"[TIMEOUT] {self.inst.user.nick}: no PONG received within {self.inst.user.pong_timeout}s, disconnecting")
-                    self.inst.send_raw(f"ERROR :Closing link: PONG timeout ({self.inst.user.pong_timeout}s)\r\n")
-                    self.inst.parent.running = False
-                    self.inst.connection = False
-                    return
-
-                ping_token = str(int(my_time))
-                self.inst.send_raw(f"PING :{ping_token}\r\n")
-                self.inst.user.last_ping_sent = my_time
-                self.inst.user.pending_ping_token = ping_token
+            if not self.inst.ping_keepalive(time.time()):
+                log(f"[TIMEOUT] {self.inst.user.nick}: no PONG received within {self.inst.user.pong_timeout}s, disconnecting")
+                self.inst.send_raw(f"ERROR :Closing link: PONG timeout ({self.inst.user.pong_timeout}s)\r\n")
+                self.inst.parent.running = False
+                self.inst.connection = False
+                return
 
             time.sleep(self.inst.user.timer)
 
@@ -621,34 +604,6 @@ class GetMessages(threading.Thread):
                 f":{self.inst.user.me} NOTICE #{room.id} :{clean_msg}\r\n"
             )
 
-    def handle_error(self, data, room):
-        try:
-            code = data.get('code')
-            if code == "404" or code == "403":
-                self.inst.send_raw(f":{self.inst.user.me} PART #{room.id}\r\n")
-                log(f"User {self.inst.user.username} left room")
-                self.inst.part(room.id)
-            elif code == "401":
-                self.inst.user.login = False
-                self.inst.send_raw(
-                    f":{self.inst.user.me} NOTICE #{room.id} :Attempting re-login...\r\n"
-                )
-                self.inst.user.login = self.inst.check_login()
-                if self.inst.user.login:
-                    self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login successful\r\n"
-                    )
-                else:
-                    self.inst.send_raw(
-                        f":{self.inst.user.me} NOTICE #{room.id} :Re-login failed\r\n"
-                    )
-                    time.sleep(10)
-        except Exception:
-            if DEBUG:
-                tb.print_exc()
-            time.sleep(1)
-
-
 class ChatujmeSystem:
     def __init__(self, parent):
         self.url = "https://api.chatujme.cz/irc"  # Security: Always use HTTPS
@@ -670,6 +625,7 @@ class Chatujme:
         self.parent = handler
         self.rfc = IRC_RFC()
         self.cap_negotiating = False
+        self.send_lock = threading.Lock()
 
     def clean_highlight(self, msg):
         return re.sub(r"<span style='background:#eded1a'>([^<]+)</span>", r"\1", msg)
@@ -787,7 +743,31 @@ class Chatujme:
         self.send(self.rfc.RPL_NAMREPLY, f"= #{rid} :{users}")
         self.send(self.rfc.RPL_ENDOFNAMES, f"#{rid} :End of /NAMES list")
 
-    def check_login(self):
+    def ping_keepalive(self, now):
+        """Send periodic PING; returns False when the client missed the PONG deadline."""
+        user = self.user
+        if user.pending_ping_token is not None:
+            # PING in flight - no new one until PONG arrives or deadline passes
+            return (now - user.last_ping_sent) < user.pong_timeout
+        if (now - user.last_ping_sent) >= user.ping_interval:
+            ping_token = str(int(now))
+            self.send_raw(f"PING :{ping_token}\r\n")
+            user.last_ping_sent = now
+            user.pending_ping_token = ping_token
+        return True
+
+    def relogin(self):
+        """Re-authenticate after session expiry (silent - no duplicate welcome)."""
+        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Session expired, attempting re-login...\r\n")
+        self.user.login = self.check_login(silent=True)
+        if self.user.login:
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Re-login successful\r\n")
+        else:
+            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Re-login failed, retrying later\r\n")
+            time.sleep(10)
+        return self.user.login
+
+    def check_login(self, silent=False):
         if not self.user.username or not self.user.nick or not self.user.password:
             if DEBUG:
                 log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}")
@@ -816,14 +796,14 @@ class Chatujme:
             code = data.get('code', 0)
             message = data.get('message', 'Unknown error')
 
-            if code == 401:
-                self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
-                return False
-            elif code in (200, 201):
+            if code in (200, 201):
                 # Ghost mechanism deferred to JOIN (probes would kill real connections)
-                self.send_welcome()
+                if not silent:
+                    self.send_welcome()
                 log(f"User logged in: {self.user.username}")
                 return True
+            # 401 = bad credentials, 403 = 2FA required, anything else - relay server message
+            self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
             return False
         except Exception as e:
             log(f"[LOGIN] Error: {e}")
@@ -855,8 +835,12 @@ class Chatujme:
         self.send_raw(f":{self.user.me} PRIVMSG {self.user.nick} :\x01VERSION\x01\r\n")
 
     def is_in_room(self, room, rtn=False):
+        try:
+            rid = int(room)
+        except (ValueError, TypeError):
+            return False
         for croom in self.rooms:
-            if int(room) == int(croom.id):
+            if rid == int(croom.id):
                 return croom if rtn else True
         return False
 
@@ -936,7 +920,7 @@ class Chatujme:
         if not self.check_command_rate():
             self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
             return {"code": 429, "message": "Rate limited"}
-        postdata = f"roomId={room_id}&text={urllib.parse.quote_plus(text)}&target={target}"
+        postdata = urllib.parse.urlencode({'roomId': room_id, 'text': text, 'target': target})
         response = self.post_url(f"{self.system.url}/post-text", postdata)
         try:
             return json.loads(response)
@@ -975,6 +959,11 @@ class Chatujme:
             if DEBUG:
                 log(f"<< {sanitize_log(line)}")
 
+            # Rate limit commands that hit the Chatujme API (messages are limited in send_text)
+            if command in ("LIST", "WHO", "WHOIS", "NAMES", "TOPIC") and not self.check_command_rate():
+                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
+                continue
+
             # CAP handling for modern IRC clients (like girc)
             if command == "CAP":
                 self.handle_cap(parts)
@@ -1008,7 +997,12 @@ class Chatujme:
                     continue
                 if self.user.login:
                     continue
-                self.user.password = parts[1]
+                # Take the whole rest of the line (passwords may contain spaces),
+                # strip the optional RFC trailing-parameter colon
+                password = line.split(" ", 1)[1]
+                if password.startswith(':'):
+                    password = password[1:]
+                self.user.password = password
                 if self.user.username and self.user.nick:
                     self.user.login = self.check_login()
 
@@ -1032,6 +1026,9 @@ class Chatujme:
                     self.send(self.rfc.ERR_NEEDMOREPARAMS, f"{command} :Not enough parameters")
                 else:
                     room_id = parts[1].lstrip('#')
+                    if not validate_room_id(room_id):
+                        self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room_id} :Invalid room ID")
+                        continue
                     self.part(room_id)
 
             elif command == "PING":
@@ -1170,12 +1167,12 @@ class Chatujme:
                     continue
 
                 if is_pm:
-                    text = f"/m {target} {text}"
-                    if self.rooms:
-                        room_id = self.rooms[0].id
-                        self.rooms[0].idler_lastsend = time.time()
-                    else:
+                    if not self.rooms:
+                        self.send(self.rfc.ERR_NOSUCHNICK, f"{target} :Cannot send PM - join a room first")
                         continue
+                    text = f"/m {target} {text}"
+                    room_id = self.rooms[0].id
+                    self.rooms[0].idler_lastsend = time.time()
                 else:
                     room_id = target.lstrip('#')
                     room = self.is_in_room(room_id, True)
@@ -1515,6 +1512,14 @@ class Chatujme:
                     old_handler.running = False
                     if old_handler.instance:
                         old_handler.instance.connection = False
+                        # Old cleanup must not part rooms the new session is (re)joining
+                        old_handler.instance.rooms = []
+                    try:
+                        # Close the socket so the old thread's blocking recv exits now,
+                        # not after the 300s timeout
+                        old_handler.socket.close()
+                    except Exception:
+                        pass
                 active_connections[nick_lower] = self.parent
 
             users_data = self.get_room_users(room)
@@ -1546,7 +1551,10 @@ class Chatujme:
         if DEBUG:
             log(f">> {msg.strip()}")
         try:
-            self.socket.send(msg.encode('utf-8'))
+            # Lock + sendall: two threads (parse + GetMessages) share this socket;
+            # a bare send() may write partially and interleave lines
+            with self.send_lock:
+                self.socket.sendall(msg.encode('utf-8'))
         except Exception as e:
             if DEBUG:
                 log(f"Send error: {e}")
@@ -1799,8 +1807,10 @@ def main():
 
                     connection.settimeout(300)  # 5 min timeout for client connections
                     with thread_lock:
-                        # Security: Max connections limit
-                        if len(World.vlakna) <= 378:
+                        # Security: Max connections limit (count only client handlers,
+                        # World.vlakna also holds one GetMessages thread per logged-in user)
+                        client_count = sum(1 for t in World.vlakna if isinstance(t, SocketHandler))
+                        if client_count < MAX_CLIENTS:
                             handler = SocketHandler(connection, address)
                             World.vlakna.append(handler)
                         else:

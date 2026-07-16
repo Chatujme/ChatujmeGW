@@ -2,7 +2,6 @@ FROM python:3.12-slim
 
 LABEL maintainer="LuRy <lury@lury.cz>"
 LABEL description="IRC Gateway for Chatujme.cz"
-LABEL version="3.0.1"
 
 WORKDIR /app
 
