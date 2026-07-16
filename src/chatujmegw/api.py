@@ -44,13 +44,25 @@ class ChatujmeAPI:
         try:
             response = self.sess.user.url_fetcher.open(url, timeout=config.API_TIMEOUT)
             return response.read().decode('utf-8')
+        except urllib.error.HTTPError as e:
+            # 4xx bodies are valid API responses (e.g. 401 on get-messages drives
+            # the poller's re-auth) - relay them instead of masking as a 500
+            if 400 <= e.code < 500:
+                try:
+                    return e.read().decode('utf-8')
+                except Exception:
+                    return f'{{"code": {e.code}, "message": "{e.reason}"}}'
+            return self._get_retry(url, retry_count, e)
         except Exception as e:
-            if retry_count >= config.MAX_RETRIES:
-                log(f"[GET_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
-                return '{"code": 500, "message": "Connection failed after retries"}'
-            self.sess.send_raw(f":{self.sess.server_name} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
-            time.sleep(config.RETRY_DELAY)
-            return self.get(url, retry_count + 1)
+            return self._get_retry(url, retry_count, e)
+
+    def _get_retry(self, url, retry_count, err):
+        if retry_count >= config.MAX_RETRIES:
+            log(f"[GET_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
+            return '{"code": 500, "message": "Connection failed after retries"}'
+        self.sess.send_raw(f":{self.sess.server_name} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {err}\r\n")
+        time.sleep(config.RETRY_DELAY)
+        return self.get(url, retry_count + 1)
 
     def post(self, url, postdata, retry_count=0):
         """POST URL with retry limit to prevent infinite loops"""
@@ -59,13 +71,14 @@ class ChatujmeAPI:
             response = self.sess.user.url_fetcher.open(url, data=postdata.encode('utf-8'), timeout=config.API_TIMEOUT)
             return response.read().decode('utf-8')
         except urllib.error.HTTPError as e:
-            # Read JSON response from HTTP errors (403, 404, etc.) - these are valid API responses
-            if e.code in (400, 403, 404):
+            # 4xx bodies are valid API responses (401 drives re-auth, 403/404 room
+            # state, 429 rate limit) - relay them instead of masking as a 500
+            if 400 <= e.code < 500:
                 try:
                     return e.read().decode('utf-8')
                 except Exception:
                     return f'{{"code": {e.code}, "message": "{e.reason}"}}'
-            # Other HTTP errors - retry
+            # 5xx / other HTTP errors - retry
             if retry_count >= config.MAX_RETRIES:
                 log(f"[POST_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
                 return '{"code": 500, "message": "Connection failed after retries"}'
@@ -106,23 +119,23 @@ class ChatujmeAPI:
         return self.get(f"{self.URL}/get-room?id={int(room_id)}")
 
     def get_users(self, room_id):
-        return self.get(f"{self.URL}/get-users?id={room_id}")
+        return self.get(f"{self.URL}/get-users?id={int(room_id)}")
 
     def get_messages(self, room_id, from_id):
-        return self.get(f"{self.URL}/get-messages?id={room_id}&from={int(from_id)}")
+        return self.get(f"{self.URL}/get-messages?id={int(room_id)}&from={int(from_id)}")
 
     def join(self, room_id):
         """Single attempt (no retry); returns parsed JSON or an error dict."""
         self._apply_headers()
         try:
-            response = self.sess.user.url_fetcher.open(f"{self.URL}/join?id={room_id}", timeout=config.API_TIMEOUT)
+            response = self.sess.user.url_fetcher.open(f"{self.URL}/join?id={int(room_id)}", timeout=config.API_TIMEOUT)
             return json.loads(response.read().decode('utf-8'))
         except Exception as e:
             log(f"[JOIN] Error: {e}")
             return {"code": 500, "message": str(e)}
 
     def part(self, room_id):
-        return self.get_no_retry(f"{self.URL}/part?id={room_id}")
+        return self.get_no_retry(f"{self.URL}/part?id={int(room_id)}")
 
     def post_text(self, room_id, text, target):
         postdata = urllib.parse.urlencode({'roomId': room_id, 'text': text, 'target': target})

@@ -10,7 +10,7 @@ import traceback as tb
 from . import config, state
 from . import textfilters
 from .models import ChannelMember
-from .util import log
+from .util import log, sanitize_irc
 
 
 class ThreadJanitor(threading.Thread):
@@ -122,32 +122,40 @@ class MessagePoller(threading.Thread):
                         if channel.first_load:
                             continue
 
+                        # Security: strip CR/LF from API-sourced fields before framing
+                        # them into IRC lines, otherwise a newline in a message could
+                        # inject a forged PRIVMSG/KICK/etc. into the client's stream
                         msg = textfilters.clean_message(message['zprava'], self.session.user.show_smiles)
+                        msg = sanitize_irc(msg)
+                        nick = sanitize_irc(message['nick'])
+                        komu = sanitize_irc(str(message.get('komu', '')))
 
                         if message["typ"] == 0:  # Public
                             self.session.send_raw(
-                                f":{self.session.make_hostmask(message['nick'], channel.id)} PRIVMSG #{channel.id} :{msg}\r\n"
+                                f":{self.session.make_hostmask(nick, channel.id)} PRIVMSG #{channel.id} :{msg}\r\n"
                             )
                         elif message["typ"] == 1:  # PM
                             self.session.send_raw(
-                                f":{self.session.make_hostmask(message['nick'], channel.id)} PRIVMSG {message['komu']} :{msg}\r\n"
+                                f":{self.session.make_hostmask(nick, channel.id)} PRIVMSG {komu} :{msg}\r\n"
                             )
                         elif message["typ"] == 2:  # System
                             if config.DEBUG:
-                                log(f"[SYSTEM MSG] nick={message['nick']} msg={msg}")
+                                log(f"[SYSTEM MSG] nick={nick} msg={msg}")
                             self.handle_system_message(msg, channel)
                         elif message["typ"] == 3:  # WALL
                             if self.session.user.settings_show_pm_from:
+                                rname = sanitize_irc(str(message.get('rname', '')))
+                                rid = sanitize_irc(str(message.get('rid', '')))
                                 self.session.send_raw(
-                                    f":{self.session.make_hostmask(message['nick'], channel.id)} PRIVMSG {message['komu']} :[From room {message['rname']} #{message['rid']}] {msg}\r\n"
+                                    f":{self.session.make_hostmask(nick, channel.id)} PRIVMSG {komu} :[From room {rname} #{rid}] {msg}\r\n"
                                 )
                             else:
                                 self.session.send_raw(
-                                    f":{self.session.make_hostmask(message['nick'], channel.id)} PRIVMSG {message['komu']} :{msg}\r\n"
+                                    f":{self.session.make_hostmask(nick, channel.id)} PRIVMSG {komu} :{msg}\r\n"
                                 )
                         elif message["typ"] == 10:  # ACTION (/me command)
                             self.session.send_raw(
-                                f":{self.session.make_hostmask(message['nick'], channel.id)} PRIVMSG #{channel.id} :\x01ACTION {msg}\x01\r\n"
+                                f":{self.session.make_hostmask(nick, channel.id)} PRIVMSG #{channel.id} :\x01ACTION {msg}\x01\r\n"
                             )
 
                 except Exception as e:
@@ -200,6 +208,12 @@ class MessagePoller(threading.Thread):
 
             time.sleep(self.session.user.poll_interval)
 
+    @staticmethod
+    def _remove_member(channel, nick):
+        """Drop a member from the cached roster (keeps NAMES/WHOIS/hostmask fresh)."""
+        low = nick.lower()
+        channel.members = [m for m in channel.members if m.nick.lower() != low]
+
     def handle_system_message(self, msg, channel):
         # Security: Limit message length to prevent ReDoS attacks
         if len(msg) > config.MAX_MESSAGE_LENGTH:
@@ -224,6 +238,7 @@ class MessagePoller(threading.Thread):
         elif "odešel" in t or "odešla" in t:
             try:
                 nick = re.findall(r'.+\s(.+)\s(odešel|odešla)', msg)[0]
+                self._remove_member(channel, nick[0])
                 self.session.send_raw(
                     f":{self.session.make_hostmask(nick[0], channel.id)} PART #{channel.id} :Left\r\n"
                 )
@@ -235,6 +250,7 @@ class MessagePoller(threading.Thread):
             try:
                 nick = re.findall(r'.+e(lka|l)\s(.+)\sby(la|l)\s', msg)[0]
                 nick = nick[1]
+                self._remove_member(channel, nick)
                 self.session.send_raw(
                     f":{self.session.make_hostmask(nick, channel.id)} PART #{channel.id} :Inactive\r\n"
                 )
@@ -251,6 +267,7 @@ class MessagePoller(threading.Thread):
                 target = nick[1]
                 duvod = nick[7] if nick[7] else "No reason given"
                 kicker = nick[6]
+                self._remove_member(channel, target)
                 self.session.send_raw(
                     f":{self.session.make_hostmask(kicker, channel.id)} KICK #{channel.id} {target} :{duvod}\r\n"
                 )

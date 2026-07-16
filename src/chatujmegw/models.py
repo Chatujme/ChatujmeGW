@@ -24,7 +24,6 @@ class User:
         )
         # Security: Command rate limiting per connection
         self.command_timestamps = []
-        self.last_command_check = 0
         self.settings_show_pm_from = True
         self.poll_interval = 5  # seconds between get-messages polls
         self.idler_enable = False

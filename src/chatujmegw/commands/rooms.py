@@ -36,8 +36,9 @@ def part(sess, parts, line):
 def list_rooms(sess, parts, line):
     rooms = json.loads(sess.api.get_rooms())
     sess.send_numeric(numerics.RPL_LISTSTART, "Channel :Users Name")
-    for room in rooms:
-        sess.send_numeric(numerics.RPL_LIST, f"#{room['id']} {room['online']} :{room['nazev']}")
+    if isinstance(rooms, list):
+        for room in rooms:
+            sess.send_numeric(numerics.RPL_LIST, f"#{room['id']} {room['online']} :{sess.field(room['nazev'])}")
     sess.send_numeric(numerics.RPL_LISTEND, ":End of /LIST")
 
 
@@ -56,9 +57,11 @@ def who(sess, parts, line):
         if room_id.isdigit():
             users = sess.fetch_channel_members(room_id)
             for user in users:
+                nick = sess.field(user['nick'])
+                sex = sess.field(user['sex'])
                 sess.send_numeric(
                     numerics.RPL_WHOREPLY,
-                    f"#{room_id} {user['nick']} {user['sex']} {sess.server_name} {user['nick']} H :0 {user['nick']}"
+                    f"#{room_id} {nick} {sex} {sess.server_name} {nick} H :0 {nick}"
                 )
         sess.send_numeric(numerics.RPL_ENDOFWHO, ":End of /WHO list")
 
@@ -85,7 +88,7 @@ def _show_topic(sess, room_id):
     try:
         response = sess.api.get_room(room_id)
         data = json.loads(response)
-        sess.send_numeric(numerics.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
+        sess.send_numeric(numerics.RPL_TOPIC, f"#{data['id']} :[{sess.field(data['nazev'])}] {sess.field(data['topic'])}")
     except Exception:
         if config.DEBUG:
             tb.print_exc()

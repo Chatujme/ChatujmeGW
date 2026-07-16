@@ -101,6 +101,15 @@ python3 chatujmegw.py --port 6667 --ssl-port 6697 --ssl-cert cert.pem --ssl-key 
 | `--ssl-cert` | Cesta k SSL certifikátu (PEM) | — |
 | `--ssl-key` | Cesta k SSL privátnímu klíči (PEM) | — |
 
+### Ladění rate-limitů (env)
+
+| Proměnná | Popis | Výchozí |
+|----------|-------|---------|
+| `CHATUJMEGW_MAX_CONN_PER_IP` | Max spojení z jedné IP za okno | `5` |
+| `CHATUJMEGW_CONN_WINDOW` | Délka okna (s) | `60` |
+| `CHATUJMEGW_MAX_CMD_PER_SEC` | Max příkazů/s na spojení | `10` |
+| `CHATUJMEGW_MAX_CLIENTS` | Max souběžných klientů | `378` |
+
 ### SSL/TLS
 
 Minimální verze TLS 1.2. Self-signed certifikát pro testování:

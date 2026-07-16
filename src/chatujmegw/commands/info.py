@@ -90,6 +90,7 @@ def whois(sess, parts, line):
 
     # Build realname based on sex
     realname = "Male user" if user_sex == "boys" else "Female user" if user_sex == "girls" else "User"
+    user_sex = sess.field(user_sex)  # API-sourced -> strip any CR/LF before framing
 
     # 311 RPL_WHOISUSER: <nick> <user> <host> * :<realname>
     sess.send_numeric(numerics.RPL_WHOISUSER, f"{nick} ~{nick} {user_sex}.chatujme.cz * :{realname}")

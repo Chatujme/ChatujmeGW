@@ -19,9 +19,10 @@ USER chatujmegw
 # Plain IRC and SSL ports
 EXPOSE 6667 6697
 
-# Health check - verify python process is running (no TCP spam)
+# Health check - actually connect to the IRC port and read the greeting, so a
+# hung/deadlocked gateway (process alive but not accepting) is reported unhealthy
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -d /proc/1/fd || exit 1
+    CMD python3 -c "import socket,sys; s=socket.create_connection(('127.0.0.1',6667),5); sys.exit(0 if s.recv(16) else 1)" || exit 1
 
 ENTRYPOINT ["python3", "-u", "chatujmegw.py"]
 CMD ["--port", "6667", "--listen", "0.0.0.0"]

@@ -11,7 +11,7 @@ from . import commands, config, numerics, state
 from .api import ChatujmeAPI
 from .models import Channel, ChannelMember, User
 from .numerics import MOTD_LINES
-from .util import log, sanitize_log
+from .util import log, sanitize_irc, sanitize_log
 
 
 class ClientSession:
@@ -35,17 +35,24 @@ class ClientSession:
         self.send_raw(line)
 
     def send_raw(self, msg):
-        """Send raw IRC message with length limit"""
-        # Security: Limit message length to prevent buffer issues
-        if len(msg) > config.MAX_LINE_LENGTH + 2:  # +2 for \r\n
-            msg = msg[:config.MAX_LINE_LENGTH] + "\r\n"
+        """Send a raw IRC line, byte-capped to the RFC 1459 512-byte limit."""
         if config.DEBUG:
             log(f">> {msg.strip()}")
+        data = msg.encode('utf-8')
+        # RFC 1459: a line is at most 512 bytes including CRLF. Cap on bytes, not
+        # characters (a line of 'é' is twice as long in bytes), without splitting a
+        # multibyte char at the boundary.
+        if len(data) > config.MAX_LINE_LENGTH:
+            body = data[:-2] if data.endswith(b"\r\n") else data
+            body = body[:config.MAX_LINE_LENGTH - 2]
+            # trailing bytes may be a truncated multibyte sequence - drop them
+            body = body.decode('utf-8', errors='ignore').encode('utf-8')
+            data = body + b"\r\n"
         try:
             # Lock + sendall: two threads (parse + MessagePoller) share this socket;
             # a bare send() may write partially and interleave lines
             with self.send_lock:
-                self.socket.sendall(msg.encode('utf-8'))
+                self.socket.sendall(data)
         except Exception as e:
             if config.DEBUG:
                 log(f"Send error: {e}")
@@ -82,6 +89,12 @@ class ClientSession:
                 log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}")
             return False
 
+        # Rate-limit login attempts: each hits the upstream check-login endpoint,
+        # so an unthrottled client could brute-force passwords / amplify to the API
+        if not self.command_allowed():
+            self.send_raw(f":{self.server_name} NOTICE * :Too many login attempts. Slow down.\r\n")
+            return False
+
         if config.DEBUG:
             log(f"[LOGIN] Attempting login for {self.user.username}")
 
@@ -102,6 +115,14 @@ class ClientSession:
             message = data.get('message', 'Unknown error')
 
             if code in (200, 201):
+                # Bind the session to the API-confirmed identity, not the client's
+                # chosen NICK. Otherwise a client could log in as one account but set
+                # someone else's nick and, via the JOIN ghost mechanism, force-close
+                # that victim's connection (active_connections is keyed by nick).
+                canonical = data.get('username')
+                if canonical:
+                    self.user.nick = canonical
+                    self.user.username = canonical
                 # Ghost mechanism deferred to JOIN (probes would kill real connections)
                 if not silent:
                     self.send_welcome()
@@ -156,25 +177,46 @@ class ClientSession:
         return self.find_channel(channel_id) is not None
 
     def fetch_channel_members(self, channel_id):
-        """Fetch member list from the API; refresh the joined channel's members."""
-        response = self.api.get_users(channel_id)
-        data = json.loads(response)
+        """Fetch member list from the API; refresh the joined channel's members.
+
+        On API failure get-users returns an error object ({code: 500}), not a
+        list - treat anything that isn't a list as "no data" so the poller and
+        NAMES/WHOIS don't crash on it.
+        """
+        try:
+            data = json.loads(self.api.get_users(channel_id))
+        except Exception:
+            data = []
+        if not isinstance(data, list):
+            return []
 
         channel = self.find_channel(channel_id)
         if channel:
-            channel.members = []
-            for entry in data:
-                member = ChannelMember()
-                member.nick = entry["nick"]
-                member.sex = entry["sex"]
-                channel.members.append(member)
+            channel.members = [self._make_member(entry) for entry in data]
 
         return data
+
+    @staticmethod
+    def _make_member(entry):
+        member = ChannelMember()
+        member.nick = entry["nick"]
+        member.sex = entry["sex"]
+        return member
+
+    @staticmethod
+    def field(value):
+        """Sanitize an API-sourced string before framing it into an IRC line.
+
+        CR/LF in a room name, topic, nick etc. would otherwise let a peer inject
+        forged IRC lines into another user's client stream (the poller does the
+        same for async messages).
+        """
+        return sanitize_irc(str(value))
 
     def send_names(self, channel_id):
         """Send RPL_NAMREPLY / RPL_ENDOFNAMES with fresh member data."""
         members = self.fetch_channel_members(channel_id)
-        names = " ".join([f"{self.membership_prefix(m)}{m['nick']}" for m in members])
+        names = " ".join([f"{self.membership_prefix(m)}{self.field(m['nick'])}" for m in members])
         self.send_numeric(numerics.RPL_NAMREPLY, f"= #{channel_id} :{names}")
         self.send_numeric(numerics.RPL_ENDOFNAMES, f"#{channel_id} :End of /NAMES list")
 
@@ -240,7 +282,7 @@ class ClientSession:
                 state.active_connections[nick_lower] = self.parent
 
             members = self.fetch_channel_members(channel_id)
-            names = " ".join([f"{self.membership_prefix(m)}{m['nick']}" for m in members])
+            names = " ".join([f"{self.membership_prefix(m)}{self.field(m['nick'])}" for m in members])
 
             if not already_joined:
                 channel = Channel()
@@ -250,7 +292,7 @@ class ClientSession:
 
             # Send JOIN confirmation
             self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.server_name} JOIN #{data['id']}\r\n")
-            self.send_numeric(numerics.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
+            self.send_numeric(numerics.RPL_TOPIC, f"#{data['id']} :[{self.field(data['nazev'])}] {self.field(data['topic'])}")
             self.send_numeric(numerics.RPL_NAMREPLY, f"= #{data['id']} :{names}")
             self.send_numeric(numerics.RPL_ENDOFNAMES, f"#{data['id']} :End of /NAMES list")
 
@@ -330,6 +372,13 @@ class ClientSession:
 
             handler = commands.HANDLERS.get(command)
             if handler:
-                handler(self, parts, line)
+                # A malformed upstream API response inside a handler must not tear
+                # down the whole client connection - contain it to this command
+                try:
+                    handler(self, parts, line)
+                except Exception:
+                    if config.DEBUG:
+                        tb.print_exc()
+                    self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Error processing {command}\r\n")
             else:
                 self.send_numeric(numerics.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")

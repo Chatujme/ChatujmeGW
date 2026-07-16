@@ -52,3 +52,5 @@ def refund_connection(ip):
         entries = connection_log.get(ip)
         if entries:
             entries.pop()  # remove the most recent entry
+            if not entries:
+                del connection_log[ip]  # don't leak empty keys under IP churn

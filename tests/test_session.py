@@ -138,9 +138,44 @@ class TestGhost(unittest.TestCase):
 
 
 class TestSendRaw(unittest.TestCase):
-    def test_long_line_truncated(self):
+    def test_long_line_truncated_by_bytes(self):
         inst = make_inst()
         inst.send_raw("A" * 1000 + "\r\n")
-        payload = inst.socket.sent.decode('utf-8')
-        self.assertLessEqual(len(payload), config.MAX_LINE_LENGTH + 2)
-        self.assertTrue(payload.endswith("\r\n"))
+        self.assertLessEqual(len(inst.socket.sent), config.MAX_LINE_LENGTH)
+        self.assertTrue(inst.socket.sent.endswith(b"\r\n"))
+
+    def test_multibyte_line_capped_on_bytes_not_chars(self):
+        # Regression: cap was char-based, so 510 'é' framed 1022 bytes
+        inst = make_inst()
+        inst.send_raw("é" * 400 + "\r\n")
+        self.assertLessEqual(len(inst.socket.sent), config.MAX_LINE_LENGTH)
+        # no split multibyte char survived the truncation
+        inst.socket.sent.decode('utf-8')  # must not raise
+        self.assertTrue(inst.socket.sent.endswith(b"\r\n"))
+
+
+class TestAuthRateLimit(unittest.TestCase):
+    def test_login_attempts_rate_limited(self):
+        # Regression: unthrottled PASS retries could brute-force / amplify to API
+        inst = make_inst()
+        inst.user.nick = "test2"
+        inst.user.username = "test2"
+        inst.user.password = "x"
+        inst.user.command_timestamps = [1e12] * config.MAX_COMMANDS_PER_SECOND
+        with mock.patch('time.time', return_value=1e12), \
+                mock.patch.object(inst.api, 'authenticate') as api:
+            self.assertFalse(inst.authenticate())
+            api.assert_not_called()
+        self.assertIn("Too many login attempts", sent(inst))
+
+
+class TestFetchMembers(unittest.TestCase):
+    def test_error_object_does_not_crash(self):
+        # Regression: get-users returns {code:500} on failure, not a list -
+        # the poller must not die on it
+        inst = make_logged_inst()
+        add_channel(inst, 15)
+        with mock.patch.object(inst.api, 'get_users',
+                               return_value='{"code": 500, "message": "boom"}'):
+            self.assertEqual(inst.fetch_channel_members(15), [])
+        self.assertEqual(inst.find_channel(15).members, [])

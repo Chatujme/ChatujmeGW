@@ -27,7 +27,8 @@ class ClientConnection(threading.Thread):
         self.daemon = True
         self.instance = None  # Set in run(), used by ghost mechanism
         self.connect_time = time.time()  # Track connection start for probe detection
-        self.recv_buffer = ""  # Security: Buffer for incomplete data
+        self.received_data = False  # did the client ever send anything (vs silent probe)
+        self.recv_buffer = b""  # Security: raw byte buffer (decode per complete line)
 
     def run(self):
         log(f"Connection accepted from {self.address[0]}")
@@ -37,11 +38,19 @@ class ClientConnection(threading.Thread):
 
         while self.running:
             try:
-                # Security: Read in smaller chunks
-                chunk = instance.socket.recv(1024).decode('utf-8', errors='replace')
+                # Security: Read in smaller chunks. Buffer raw bytes and decode only
+                # complete lines, so a multibyte UTF-8 char split across two recv()
+                # chunks is not corrupted into replacement characters.
+                chunk = instance.socket.recv(1024)
                 if not chunk:
                     # Connection closed
                     break
+
+                # Security: don't let unauthenticated clients hold a slot/thread for
+                # the full 300s socket timeout (pre-auth slowloris). PING keepalive
+                # only starts after login, so bound the login phase separately.
+                if chunk:
+                    self.received_data = True
 
                 self.recv_buffer += chunk
 
@@ -52,19 +61,11 @@ class ClientConnection(threading.Thread):
                     break
 
                 # Process complete lines only
-                while '\r\n' in self.recv_buffer or '\n' in self.recv_buffer:
-                    # Find line terminator
-                    rn_pos = self.recv_buffer.find('\r\n')
-                    n_pos = self.recv_buffer.find('\n')
-
-                    if rn_pos != -1 and (n_pos == -1 or rn_pos < n_pos):
-                        line = self.recv_buffer[:rn_pos]
-                        self.recv_buffer = self.recv_buffer[rn_pos + 2:]
-                    elif n_pos != -1:
-                        line = self.recv_buffer[:n_pos]
-                        self.recv_buffer = self.recv_buffer[n_pos + 1:]
-                    else:
-                        break
+                while b'\n' in self.recv_buffer:
+                    n_pos = self.recv_buffer.find(b'\n')
+                    raw_line = self.recv_buffer[:n_pos].rstrip(b'\r')
+                    self.recv_buffer = self.recv_buffer[n_pos + 1:]
+                    line = raw_line.decode('utf-8', errors='replace')
 
                     # Parse complete line
                     result = instance.feed(line + "\r\n")
@@ -77,7 +78,11 @@ class ClientConnection(threading.Thread):
                         break
 
             except socket.timeout:
-                # Normal timeout, continue
+                # Drop connections that never authenticated within the login window
+                # instead of holding a slot for the full socket timeout
+                if not instance.user.login and (time.time() - self.connect_time) >= config.LOGIN_TIMEOUT:
+                    log(f"[TIMEOUT] {self.address[0]} did not log in within {config.LOGIN_TIMEOUT}s")
+                    break
                 continue
             except Exception as e:
                 log(f"Connection from {self.address[0]} closed: {e}")
@@ -91,6 +96,12 @@ class ClientConnection(threading.Thread):
 
             if instance.user.nick and instance.user.login and not instance.user.polling:
                 try:
+                    # Login done: relax the short pre-auth recv timeout to the full
+                    # idle timeout (poller keepalive takes over from here)
+                    try:
+                        self.socket.settimeout(config.CLIENT_TIMEOUT)
+                    except Exception:
+                        pass
                     with state.threads_lock:
                         state.threads.append(MessagePoller(instance))
                     state.janitor.start_threads()
@@ -112,10 +123,12 @@ class ClientConnection(threading.Thread):
                 if state.active_connections.get(nick_lower) is self:
                     del state.active_connections[nick_lower]
 
-        # Probe-friendly rate limiting: short-lived connections (probes, health checks)
-        # don't count against the rate limit budget
+        # Probe-friendly rate limiting: refund the budget ONLY for genuine silent
+        # probes (health checks that read the greeting and close without sending).
+        # Requiring received_data == False closes the refund abuse where an attacker
+        # churns sub-5s connections to evade the per-IP limit.
         connection_duration = time.time() - self.connect_time
-        if connection_duration < self.PROBE_THRESHOLD:
+        if connection_duration < self.PROBE_THRESHOLD and not self.received_data:
             refund_connection(self.address[0])
 
         log(f"Connection from {self.address[0]} closed.")
@@ -246,13 +259,17 @@ def main():
                         connection.close()
                         continue
 
-                    # Wrap connection with SSL if this socket requires it
+                    # Wrap connection with SSL if this socket requires it. Bound the
+                    # handshake first: a stalled TLS handshake would otherwise block
+                    # the whole accept loop (no new clients accepted) since it runs
+                    # inline here.
                     if use_ssl and ssl_context:
                         try:
+                            connection.settimeout(config.LOGIN_TIMEOUT)
                             connection = ssl_context.wrap_socket(connection, server_side=True)
                             if config.DEBUG:
                                 log(f"[SSL] Secure connection established with {address[0]}:{port}")
-                        except ssl.SSLError as e:
+                        except (ssl.SSLError, socket.timeout, OSError) as e:
                             log(f"[SSL] Handshake failed for {address[0]}: {e}")
                             try:
                                 connection.close()
@@ -260,7 +277,9 @@ def main():
                                 pass
                             continue
 
-                    connection.settimeout(300)  # 5 min timeout for client connections
+                    # Short timeout until the client logs in (bounds pre-auth
+                    # slowloris); ClientConnection raises it after a successful login
+                    connection.settimeout(config.LOGIN_TIMEOUT)
                     with state.threads_lock:
                         # Security: Max connections limit (count only client handlers,
                         # state.threads also holds one MessagePoller thread per logged-in user)

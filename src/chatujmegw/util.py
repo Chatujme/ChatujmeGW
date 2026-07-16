@@ -47,9 +47,13 @@ def sanitize_log(text):
     # Mask password in various formats
     text = re.sub(r'password=[^&\s"\']+', 'password=***', text, flags=re.IGNORECASE)
     text = re.sub(r'"password"\s*:\s*"[^"]+"', '"password": "***"', text, flags=re.IGNORECASE)
-    text = re.sub(r'PASS\s+\S+', 'PASS ***', text, flags=re.IGNORECASE)
-    # Mask tokens and session IDs
+    # PASS may legitimately carry spaces (RFC trailing param) - mask the whole rest
+    # of the line, not just the first token
+    text = re.sub(r'(?i)\bPASS\b\s+.*', 'PASS ***', text)
+    # Mask tokens and session IDs (form and JSON shapes)
     text = re.sub(r'token=[^&\s"\']+', 'token=***', text, flags=re.IGNORECASE)
+    text = re.sub(r'"(?:token|sessionId|session_id|access_token)"\s*:\s*"[^"]+"',
+                  '"token": "***"', text, flags=re.IGNORECASE)
     text = re.sub(r'session[_-]?id=[^&\s"\']+', 'session_id=***', text, flags=re.IGNORECASE)
     text = re.sub(r'cookie:\s*[^\r\n]+', 'cookie: ***', text, flags=re.IGNORECASE)
     return text
