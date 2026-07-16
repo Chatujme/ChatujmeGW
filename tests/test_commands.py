@@ -245,6 +245,30 @@ class TestIdler(unittest.TestCase):
         self.assertIn("Idler: OFF", sent(inst))
 
 
+class TestSmiles(unittest.TestCase):
+    def test_smiles_set_modes(self):
+        from chatujmegw import textfilters
+        inst = make_logged_inst()
+        for subcmd, expected in (("CODE", textfilters.SMILES_CODE),
+                                 ("URL", textfilters.SMILES_URL),
+                                 ("HIDE", textfilters.SMILES_HIDE),
+                                 ("TEXT", textfilters.SMILES_TEXT)):
+            inst.feed(f"SMILES {subcmd}\r\n")
+            self.assertEqual(inst.user.show_smiles, expected, subcmd)
+        self.assertIn("set to TEXT", sent(inst))
+
+    def test_smiles_status_shows_current_mode(self):
+        inst = make_logged_inst()
+        inst.feed("SMILES\r\n")
+        self.assertIn("current: TEXT", sent(inst))
+        self.assertIn("SMILES CODE", sent(inst))
+
+    def test_smiles_unknown_shows_help(self):
+        inst = make_logged_inst()
+        inst.feed("SMILES FOO\r\n")
+        self.assertIn("current: TEXT", sent(inst))
+
+
 class TestMisc(unittest.TestCase):
     def test_unknown_command(self):
         inst = make_logged_inst()

@@ -33,6 +33,7 @@ HANDLERS = {
     "AWAY": presence.away,
     "QUIT": presence.quit_,
     "IDLER": presence.idler,
+    "SMILES": presence.smiles,
 }
 
 # Commands that hit the Chatujme API and are subject to the per-connection rate limit

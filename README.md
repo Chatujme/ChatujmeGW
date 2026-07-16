@@ -174,6 +174,16 @@ Předkompilovaný `dist/chatujmegw.exe` je součástí repozitáře.
 | `NICKSERV IDENTIFY` / `NS ID` | Již přihlášen přes PASS |
 | `NICKSERV REGISTER` / `REGISTER` | Přesměruje na web registraci |
 
+### SMILES (zobrazení smajlíků)
+
+| Příkaz | Popis |
+|--------|-------|
+| `SMILES` / `SMILES STATUS` | Aktuální režim + nápověda |
+| `SMILES TEXT` | Popis smajlíku z webu (aria-label), jinak kód `*ID*` (výchozí) |
+| `SMILES CODE` | Vždy kód `*ID*` (lze poslat zpět do chatu) |
+| `SMILES URL` | URL obrázku |
+| `SMILES HIDE` | Smajlíky skrýt |
+
 ### IDLER (anti-idle)
 
 | Příkaz | Popis |

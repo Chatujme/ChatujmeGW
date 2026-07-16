@@ -1,8 +1,31 @@
-"""Presence commands: AWAY, QUIT and the IDLER anti-idle extension."""
+"""Client preference commands: AWAY, QUIT, IDLER and SMILES display mode."""
 
 import time
 
-from .. import numerics
+from .. import numerics, textfilters
+
+SMILES_MODES = {
+    "HIDE": textfilters.SMILES_HIDE,
+    "TEXT": textfilters.SMILES_TEXT,
+    "URL": textfilters.SMILES_URL,
+    "CODE": textfilters.SMILES_CODE,
+}
+
+
+def smiles(sess, parts, line):
+    # SMILES [HIDE|TEXT|URL|CODE|STATUS] - how incoming smileys are rendered
+    subcmd = parts[1].upper() if len(parts) > 1 else "STATUS"
+    if subcmd in SMILES_MODES:
+        sess.user.show_smiles = SMILES_MODES[subcmd]
+        sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :Smileys display mode set to {subcmd}\r\n")
+        return
+    mode_names = {v: k for k, v in SMILES_MODES.items()}
+    current = mode_names.get(sess.user.show_smiles, "TEXT")
+    sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :SMILES - Smiley display mode (current: {current})\r\n")
+    sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :  SMILES TEXT - description when available, *ID* code otherwise (default)\r\n")
+    sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :  SMILES CODE - always the *ID* code (can be sent back)\r\n")
+    sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :  SMILES URL  - image URL\r\n")
+    sess.send_raw(f":{sess.server_name} NOTICE {sess.user.nick} :  SMILES HIDE - hide smileys\r\n")
 
 
 def away(sess, parts, line):

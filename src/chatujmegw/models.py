@@ -30,7 +30,7 @@ class User:
         self.idler_enable = False
         self.idler_timer = 2400  # 40min
         self.idler_text = [".", "..", "AFK"]
-        self.show_smiles = 1  # 0 - Hide, 1 - Text, 2 - URL
+        self.show_smiles = 1  # textfilters.SMILES_* (0 hide, 1 text, 2 url, 3 code)
         self.away_message = None  # None = not away, string = away message
         self.away_last_sent = 0  # Timestamp of last away message sent
         self.away_interval = 1800  # 30 minutes
