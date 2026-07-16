@@ -8,7 +8,7 @@ so they always see the live value.
 import os
 import sys
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls

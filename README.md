@@ -41,22 +41,37 @@ Místnosti se adresují číslem: `/join #12345` (číslo místnosti z webu).
 
 ### Struktura kódu
 
-| Soubor | Obsah |
-|--------|-------|
-| `chatujmegw.py` | CLI entry point (argparse, start serveru) |
-| `gw/config.py` | Konstanty a runtime nastavení |
-| `gw/util.py` | Logování, sanitizace, validace |
-| `gw/state.py` | Sdílený stav (registry spojení, rate limiting) |
-| `gw/models.py` | Datové třídy (`User`, `RoomStruct`) |
-| `gw/client.py` | IRC protokol + volání Chatujme API |
-| `gw/poller.py` | Vlákna (message poller, janitor) |
-| `gw/server.py` | TCP/SSL listenery |
+```
+chatujmegw.py                  launcher (kompatibilita; ekvivalent: PYTHONPATH=src python -m chatujmegw)
+src/chatujmegw/
+├── cli.py                     argparse + bootstrap procesu
+├── config.py                  konstanty a runtime nastavení
+├── util.py                    logování, sanitizace, validace
+├── state.py                   sdílený stav (registry spojení, rate limiting)
+├── models.py                  datové třídy (User, RoomStruct)
+├── numerics.py                RFC numerické kódy, MOTD banner
+├── api.py                     HTTP transport na api.chatujme.cz/irc
+├── textfilters.py             překlad HTML zpráv na IRC text
+├── session.py                 jádro session: login, místnosti, dispatch
+├── commands/                  handlery IRC příkazů
+│   ├── auth.py                CAP, NICK, USER, PASS, NickServ
+│   ├── rooms.py               JOIN, PART, LIST, NAMES, WHO, MODE, TOPIC, KICK
+│   ├── messaging.py           PRIVMSG/NOTICE + CTCP
+│   ├── info.py                PING/PONG, VERSION, MOTD, WHOIS, USERHOST
+│   └── presence.py            AWAY, QUIT, IDLER
+├── poller.py                  vlákna (message poller, janitor)
+└── server.py                  TCP/SSL listenery
+tests/                         unit testy (unittest, bez sítě)
+packaging/pyi_entry.py         vstup pro PyInstaller build
+```
 
 ### Testy
 
 ```bash
-python -m unittest test_chatujmegw -v
+python -m unittest discover -v
 ```
+
+Testy běží automaticky v CI (GitHub Actions) na Linuxu i Windows, Python 3.8 a 3.12.
 
 ### Spuštění
 
@@ -110,8 +125,10 @@ docker run -d -p 6667:6667 -p 6697:6697 --restart always --name chatujmegw chatu
 
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --console --icon=chatujme.ico chatujmegw.py
+pyinstaller --onefile --console --icon=chatujme.ico --paths src --name chatujmegw packaging/pyi_entry.py
 ```
+
+Release exe se builduje automaticky v GitHub Actions při pushnutí tagu `v*`.
 
 Předkompilovaný `dist/chatujmegw.exe` je součástí repozitáře.
 

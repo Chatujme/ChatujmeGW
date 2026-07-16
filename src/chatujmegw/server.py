@@ -10,7 +10,7 @@ import time
 import traceback as tb
 
 from . import config, state
-from .client import Chatujme
+from .session import Chatujme
 from .poller import Collector, GetMessages
 from .state import check_rate_limit, uncount_rate_limit
 from .util import log, fatal_error_pause

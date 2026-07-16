@@ -8,6 +8,7 @@ import time
 import traceback as tb
 
 from . import config, state
+from . import textfilters
 from .models import UserInRoom
 from .util import log
 
@@ -70,9 +71,7 @@ class GetMessages(threading.Thread):
 
             for room in self.inst.rooms[:]:  # Copy list to allow modification during iteration
                 try:
-                    response = self.inst.get_url(
-                        f"{self.inst.system.url}/get-messages?id={room.id}&from={int(room.last_id)}"
-                    )
+                    response = self.inst.api.get_messages(room.id, room.last_id)
                     data = json.loads(response)
 
                     # Debug: log every API response structure
@@ -124,10 +123,7 @@ class GetMessages(threading.Thread):
                         if room.first_load:
                             continue
 
-                        msg = self.inst.clean_highlight(mess['zprava'])
-                        msg = self.inst.clean_smiles(msg)
-                        msg = self.inst.clean_urls_mailto(msg)
-                        msg = self.inst.clean_urls(msg)
+                        msg = textfilters.clean_message(mess['zprava'], self.inst.user.show_smiles)
 
                         if mess["typ"] == 0:  # Public
                             self.inst.send_raw(

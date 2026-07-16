@@ -20,12 +20,15 @@ jobs:
 
       - name: Check VERSION matches tag
         shell: bash
-        run: grep -qF "VERSION = \"${GITHUB_REF_NAME#v}\"" gw/config.py
+        run: grep -qF "VERSION = \"${GITHUB_REF_NAME#v}\"" src/chatujmegw/config.py
+
+      - name: Run tests
+        run: python -m unittest discover -v
 
       - name: Build exe
         run: |
           pip install pyinstaller
-          pyinstaller --onefile --console --icon=chatujme.ico chatujmegw.py
+          pyinstaller --onefile --console --icon=chatujme.ico --paths src --name chatujmegw packaging/pyi_entry.py
 
       - name: Create release
         uses: softprops/action-gh-release@v2

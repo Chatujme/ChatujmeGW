@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Copy application
 COPY chatujmegw.py .
-COPY gw/ ./gw/
+COPY src/ ./src/
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Create non-root user for security
