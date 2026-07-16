@@ -26,6 +26,7 @@ class ClientSession:
         self.parent = handler
         self.cap_negotiating = False
         self.send_lock = threading.Lock()
+        self.auth_attempted = False  # guards against double login (NICK/USER/PASS + CAP END)
 
     # --- outgoing IRC lines ---
 
@@ -82,6 +83,25 @@ class ClientSession:
             self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Re-login failed, retrying later\r\n")
             time.sleep(10)
         return self.user.login
+
+    def try_login(self):
+        """Single guarded login entry point for NICK/USER/PASS/CAP END.
+
+        Only attempts once per credential set, so the classic client sequence
+        (NICK+USER+PASS then CAP END) doesn't fire authenticate() twice - which
+        would relay the 2FA notice twice and burn two account login attempts.
+        A newly supplied credential resets the guard (see reset_auth).
+        """
+        if self.user.login or self.auth_attempted:
+            return
+        if not (self.user.password and self.user.nick and self.user.username):
+            return
+        self.auth_attempted = True
+        self.user.login = self.authenticate()
+
+    def reset_auth(self):
+        """A credential (re)arrived - allow one more login attempt."""
+        self.auth_attempted = False
 
     def authenticate(self, silent=False):
         if not self.user.username or not self.user.nick or not self.user.password:

@@ -35,8 +35,7 @@ def cap(sess, parts, line):
     elif subcmd == "END":
         sess.cap_negotiating = False
         # If we have credentials and not already logged in, try to login
-        if not sess.user.login and sess.user.password and sess.user.nick and sess.user.username:
-            sess.user.login = sess.authenticate()
+        sess.try_login()
 
 
 def nick(sess, parts, line):
@@ -51,8 +50,8 @@ def nick(sess, parts, line):
         sess.send_raw(f":{sess.server_name} NOTICE * :Invalid nickname ({config.MIN_NICK_LENGTH}-{config.MAX_NICK_LENGTH} chars, a-z 0-9 - _ only, must start with letter)\r\n")
         return
     sess.user.nick = new_nick
-    if sess.user.password and sess.user.username:
-        sess.user.login = sess.authenticate()
+    sess.reset_auth()
+    sess.try_login()
 
 
 def user(sess, parts, line):
@@ -61,8 +60,8 @@ def user(sess, parts, line):
     if sess.user.login:
         return
     sess.user.username = parts[1]
-    if sess.user.password and sess.user.nick:
-        sess.user.login = sess.authenticate()
+    sess.reset_auth()
+    sess.try_login()
 
 
 def password(sess, parts, line):
@@ -76,8 +75,8 @@ def password(sess, parts, line):
     if value.startswith(':'):
         value = value[1:]
     sess.user.password = value
-    if sess.user.username and sess.user.nick:
-        sess.user.login = sess.authenticate()
+    sess.reset_auth()
+    sess.try_login()
 
 
 def nickserv(sess, parts, line):

@@ -141,6 +141,27 @@ class TestCap(unittest.TestCase):
             cl.assert_called_once()
         self.assertTrue(inst.user.login)
 
+    def test_login_attempted_once_across_nick_user_pass_and_cap_end(self):
+        # Regression: NICK+USER+PASS then CAP END fired authenticate() twice ->
+        # 2FA notice relayed twice + two account login attempts
+        inst = make_inst()
+        with mock.patch.object(inst, 'authenticate', return_value=False) as auth:
+            inst.feed("NICK test2\r\n")
+            inst.feed("USER test2 0 * :test2\r\n")
+            inst.feed("PASS heslo\r\n")
+            inst.feed("CAP END\r\n")
+            auth.assert_called_once()
+
+    def test_new_password_after_failure_retries(self):
+        # A corrected credential must allow another attempt
+        inst = make_inst()
+        with mock.patch.object(inst, 'authenticate', side_effect=[False, True]) as auth:
+            inst.feed("NICK test2\r\n")
+            inst.feed("USER test2 0 * :test2\r\n")
+            inst.feed("PASS wrong\r\n")
+            inst.feed("PASS right\r\n")
+            self.assertEqual(auth.call_count, 2)
+
 
 class TestModeKick(unittest.TestCase):
     def test_mode_plus_o_transfers_admin(self):

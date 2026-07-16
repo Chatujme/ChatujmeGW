@@ -8,7 +8,7 @@ so they always see the live value.
 import os
 import sys
 
-VERSION = "3.6.0"
+VERSION = "3.7.0"
 SERVER_NAME = "chatujme.cz"  # server prefix used in IRC lines sent to clients
 USER_AGENT = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
