@@ -8,8 +8,9 @@ so they always see the live value.
 import os
 import sys
 
-VERSION = "3.2.0"
-UA = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
+VERSION = "3.3.0"
+SERVER_NAME = "chatujme.cz"  # server prefix used in IRC lines sent to clients
+USER_AGENT = f'ChatujmeGW/v{VERSION} ({sys.platform} {os.name}) Python {sys.version.split(" ")[0]}'
 
 # Security: Max retry attempts for API calls
 MAX_RETRIES = 3

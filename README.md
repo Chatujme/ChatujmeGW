@@ -48,7 +48,7 @@ src/chatujmegw/
 ├── config.py                  konstanty a runtime nastavení
 ├── util.py                    logování, sanitizace, validace
 ├── state.py                   sdílený stav (registry spojení, rate limiting)
-├── models.py                  datové třídy (User, RoomStruct)
+├── models.py                  datové třídy (User, Channel, ChannelMember)
 ├── numerics.py                RFC numerické kódy, MOTD banner
 ├── api.py                     HTTP transport na api.chatujme.cz/irc
 ├── textfilters.py             překlad HTML zpráv na IRC text

@@ -3,23 +3,23 @@ from unittest import mock
 
 from chatujmegw import config
 
-from .helpers import add_room, make_inst, make_logged_inst, sent
+from .helpers import add_channel, make_inst, make_logged_inst, sent
 
 
 class TestPassParsing(unittest.TestCase):
     def test_pass_plain(self):
         inst = make_inst()
-        inst.parse("PASS heslo123\r\n", 0)
+        inst.feed("PASS heslo123\r\n")
         self.assertEqual(inst.user.password, "heslo123")
 
     def test_pass_with_colon_prefix(self):
         inst = make_inst()
-        inst.parse("PASS :heslo123\r\n", 0)
+        inst.feed("PASS :heslo123\r\n")
         self.assertEqual(inst.user.password, "heslo123")
 
     def test_pass_with_spaces(self):
         inst = make_inst()
-        inst.parse("PASS :my secret pass\r\n", 0)
+        inst.feed("PASS :my secret pass\r\n")
         self.assertEqual(inst.user.password, "my secret pass")
 
 
@@ -27,9 +27,9 @@ class TestLogin(unittest.TestCase):
     def login(self, response):
         inst = make_inst()
         with mock.patch.object(inst.api, 'post', return_value=response):
-            inst.parse("NICK test2\r\n", 0)
-            inst.parse("USER test2 0 * :test2\r\n", 0)
-            inst.parse("PASS heslo\r\n", 0)
+            inst.feed("NICK test2\r\n")
+            inst.feed("USER test2 0 * :test2\r\n")
+            inst.feed("PASS heslo\r\n")
         return inst
 
     def test_login_success_sends_welcome(self):
@@ -50,21 +50,21 @@ class TestLogin(unittest.TestCase):
         self.assertFalse(inst.user.login)
         self.assertIn("Two-factor authentication required.", sent(inst))
 
-    def test_relogin_is_silent(self):
+    def test_reauthenticate_is_silent(self):
         inst = self.login('{"id": 1, "username": "test2", "code": 200, "message": "success"}')
         inst.socket.sent = b''
         with mock.patch.object(inst.api, 'post',
                                return_value='{"id": 1, "username": "test2", "code": 200, "message": "success"}'):
-            self.assertTrue(inst.relogin())
+            self.assertTrue(inst.reauthenticate())
         self.assertNotIn(" 001 ", sent(inst))  # no duplicate welcome
         self.assertIn("Re-login successful", sent(inst))
 
-    def test_relogin_failure_notifies_and_backs_off(self):
+    def test_reauthenticate_failure_notifies_and_backs_off(self):
         inst = self.login('{"id": 1, "username": "test2", "code": 200, "message": "success"}')
         inst.socket.sent = b''
         with mock.patch.object(inst.api, 'post', return_value='{"id": null, "code": 401, "message": "x"}'), \
                 mock.patch('time.sleep') as slept:
-            self.assertFalse(inst.relogin())
+            self.assertFalse(inst.reauthenticate())
             slept.assert_called_once_with(10)
         self.assertIn("Re-login failed", sent(inst))
 
@@ -82,7 +82,7 @@ class TestPingKeepalive(unittest.TestCase):
     def test_pong_resets_cycle(self):
         inst = make_inst()
         inst.ping_keepalive(1000)
-        inst.parse(f"PONG :{inst.user.pending_ping_token}\r\n", 0)
+        inst.feed(f"PONG :{inst.user.pending_ping_token}\r\n")
         self.assertIsNone(inst.user.pending_ping_token)
         self.assertTrue(inst.ping_keepalive(1120))  # no pending PING -> alive, sends next
         self.assertIsNotNone(inst.user.pending_ping_token)
@@ -96,13 +96,13 @@ class TestPingKeepalive(unittest.TestCase):
 
 
 class TestRooms(unittest.TestCase):
-    def test_is_in_room_garbage(self):
+    def test_find_channel_garbage(self):
         inst = make_inst()
-        add_room(inst, 15)
-        self.assertFalse(inst.is_in_room("abc"))
-        self.assertFalse(inst.is_in_room(None))
-        self.assertTrue(inst.is_in_room("15"))
-        self.assertTrue(inst.is_in_room(15))
+        add_channel(inst, 15)
+        self.assertFalse(inst.in_channel("abc"))
+        self.assertFalse(inst.in_channel(None))
+        self.assertTrue(inst.in_channel("15"))
+        self.assertTrue(inst.in_channel(15))
 
     def test_send_text_urlencodes_params(self):
         # Regression: roomId/target were interpolated raw into POST body
@@ -114,6 +114,27 @@ class TestRooms(unittest.TestCase):
         self.assertIn("roomId=15", captured['pd'])
         self.assertNotIn("&admin=1", captured['pd'])
         self.assertIn("%2315%26admin%3D1", captured['pd'])
+
+
+class TestGhost(unittest.TestCase):
+    def test_ghost_clears_old_session_channels(self):
+        # Regression: rename refactor left `old.instance.rooms = []` so the old
+        # session's cleanup would part the channels the new session just joined
+        from chatujmegw import state
+        old = make_logged_inst()
+        add_channel(old, 15)
+        new = make_logged_inst()
+        state.active_connections['test2'] = old.parent
+        try:
+            with mock.patch.object(new.api, 'join',
+                                   return_value={'code': 200, 'id': 15, 'nazev': 'X', 'topic': 'T'}), \
+                    mock.patch.object(new.api, 'get_users', return_value='[]'):
+                new.join_channel('15')
+            self.assertEqual(old.channels, [])
+            self.assertFalse(old.parent.running)
+            self.assertIs(state.active_connections['test2'], new.parent)
+        finally:
+            state.active_connections.pop('test2', None)
 
 
 class TestSendRaw(unittest.TestCase):

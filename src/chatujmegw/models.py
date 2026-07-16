@@ -1,4 +1,9 @@
-"""Data holders for a connected user and joined rooms."""
+"""Data holders: the connected user, joined channels and their members.
+
+Naming follows RFC 2812 / modern IRC spec terminology: a connected entity
+is a client/user, Chatujme rooms map to IRC channels, people in them are
+channel members ("boys"/"girls" values come from the Chatujme API contract).
+"""
 
 import http.cookiejar
 import urllib.request
@@ -9,10 +14,9 @@ class User:
         self.username = ""
         self.nick = ""
         self.password = ""
-        self.me = "chatujme.cz"
         self.login = False
         self.sex = "boys"
-        self.reading = False
+        self.polling = False  # message poller thread started
         # Security: Use in-memory cookies only - no file storage
         self.cookie_jar = http.cookiejar.CookieJar()
         self.url_fetcher = urllib.request.build_opener(
@@ -22,7 +26,7 @@ class User:
         self.command_timestamps = []
         self.last_command_check = 0
         self.settings_show_pm_from = True
-        self.timer = 5
+        self.poll_interval = 5  # seconds between get-messages polls
         self.idler_enable = False
         self.idler_timer = 2400  # 40min
         self.idler_text = [".", "..", "AFK"]
@@ -38,19 +42,17 @@ class User:
         self.client_version = None  # IRC client version from CTCP VERSION reply
 
 
-class UserInRoom:
+class ChannelMember:
     def __init__(self):
         self.nick = ""
         self.sex = ""
 
 
-class RoomStruct:
+class Channel:
     def __init__(self):
         self.id = None
-        self.nick = ""
-        self.users = []
-        self.last_id = 0
-        self.last_mess = ""
+        self.members = []
+        self.last_id = 0  # poll cursor: id of the last message seen
         self.first_load = True
-        self.idler_lastsend = 0
+        self.idler_last_sent = 0
         self.say_ago_seconds = 0  # Server-side idle time from API

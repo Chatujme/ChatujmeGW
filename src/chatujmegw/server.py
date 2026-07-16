@@ -10,13 +10,13 @@ import time
 import traceback as tb
 
 from . import config, state
-from .session import Chatujme
-from .poller import Collector, GetMessages
-from .state import check_rate_limit, uncount_rate_limit
+from .session import ClientSession
+from .poller import ThreadJanitor, MessagePoller
+from .state import allow_connection, refund_connection
 from .util import log, fatal_error_pause
 
 
-class SocketHandler(threading.Thread):
+class ClientConnection(threading.Thread):
     PROBE_THRESHOLD = 5  # Connections shorter than 5s are considered probes
 
     def __init__(self, sock, address):
@@ -31,12 +31,11 @@ class SocketHandler(threading.Thread):
 
     def run(self):
         log(f"Connection accepted from {self.address[0]}")
-        instance = Chatujme(self.socket, self.address[0], self)
+        instance = ClientSession(self.socket, self.address[0], self)
         self.instance = instance  # Store for ghost mechanism
-        instance.send_raw(f":{instance.user.me} NOTICE * :Connected from {self.address[0]}, waiting for login.\r\n")
+        instance.send_raw(f":{instance.server_name} NOTICE * :Connected from {self.address[0]}, waiting for login.\r\n")
 
         while self.running:
-            timestamp = int(time.time())
             try:
                 # Security: Read in smaller chunks
                 chunk = instance.socket.recv(1024).decode('utf-8', errors='replace')
@@ -49,7 +48,7 @@ class SocketHandler(threading.Thread):
                 # Security: Check buffer size limit
                 if len(self.recv_buffer) > config.MAX_BUFFER_SIZE:
                     log(f"[SECURITY] Buffer overflow attempt from {self.address[0]}, disconnecting")
-                    instance.send_raw(f":{instance.user.me} ERROR :Buffer overflow - disconnecting\r\n")
+                    instance.send_raw(f":{instance.server_name} ERROR :Buffer overflow - disconnecting\r\n")
                     break
 
                 # Process complete lines only
@@ -68,7 +67,7 @@ class SocketHandler(threading.Thread):
                         break
 
                     # Parse complete line
-                    result = instance.parse(line + "\r\n", timestamp)
+                    result = instance.feed(line + "\r\n")
                     if config.DEBUG:
                         log(f"[PARSE] result={result}, login={instance.user.login}, nick={instance.user.nick}")
                     if result == 2:
@@ -85,25 +84,25 @@ class SocketHandler(threading.Thread):
                 if config.DEBUG:
                     tb.print_exc()
                 # Leave all rooms on disconnect - don't send to client (already disconnected)
-                for room in instance.rooms[:]:
-                    instance.part(room.id, send_to_client=False)
+                for channel in instance.channels[:]:
+                    instance.part_channel(channel.id, notify_client=False)
                 instance.connection = False
                 break
 
-            if instance.user.nick and instance.user.login and not instance.user.reading:
+            if instance.user.nick and instance.user.login and not instance.user.polling:
                 try:
-                    with state.thread_lock:
-                        state.World.vlakna.append(GetMessages(instance))
-                    state.World.collector.start_threads()
-                    instance.user.reading = True
+                    with state.threads_lock:
+                        state.threads.append(MessagePoller(instance))
+                    state.janitor.start_threads()
+                    instance.user.polling = True
                 except Exception as e:
                     if config.DEBUG:
                         tb.print_exc()
                     break
 
         # Cleanup on disconnect
-        for room in instance.rooms[:]:
-            instance.part(room.id, send_to_client=False)
+        for channel in instance.channels[:]:
+            instance.part_channel(channel.id, notify_client=False)
         instance.connection = False
 
         # Remove from active connections registry
@@ -117,7 +116,7 @@ class SocketHandler(threading.Thread):
         # don't count against the rate limit budget
         connection_duration = time.time() - self.connect_time
         if connection_duration < self.PROBE_THRESHOLD:
-            uncount_rate_limit(self.address[0])
+            refund_connection(self.address[0])
 
         log(f"Connection from {self.address[0]} closed.")
         try:
@@ -220,11 +219,11 @@ def main():
         ssl_status = " [SSL/TLS]" if config.SSL_ENABLED else ""
         log(f"ChatujmeGW {config.VERSION} (Python 3), listening on {config.BIND}:{config.PORT}{ssl_status}")
 
-    state.World.collector = Collector()
-    state.World.collector.start()
+    state.janitor = ThreadJanitor()
+    state.janitor.start()
 
     try:
-        while state.World.collector.running:
+        while state.janitor.running:
             try:
                 # Use select to wait for connections on any socket
                 readable, _, _ = select.select(server_sockets, [], [], 1.0)
@@ -238,7 +237,7 @@ def main():
                     port, use_ssl = socket_info[server_socket]
 
                     # Security: Check rate limit per IP
-                    if not check_rate_limit(address[0]):
+                    if not allow_connection(address[0]):
                         log(f"[SECURITY] Rate limit exceeded for {address[0]}, rejecting connection")
                         try:
                             connection.send(b"ERROR :Too many connections from your IP. Try again later.\r\n")
@@ -262,13 +261,13 @@ def main():
                             continue
 
                     connection.settimeout(300)  # 5 min timeout for client connections
-                    with state.thread_lock:
+                    with state.threads_lock:
                         # Security: Max connections limit (count only client handlers,
-                        # state.World.vlakna also holds one GetMessages thread per logged-in user)
-                        client_count = sum(1 for t in state.World.vlakna if isinstance(t, SocketHandler))
+                        # state.threads also holds one MessagePoller thread per logged-in user)
+                        client_count = sum(1 for t in state.threads if isinstance(t, ClientConnection))
                         if client_count < config.MAX_CLIENTS:
-                            handler = SocketHandler(connection, address)
-                            state.World.vlakna.append(handler)
+                            handler = ClientConnection(connection, address)
+                            state.threads.append(handler)
                         else:
                             log(f"[SECURITY] Max connections reached, rejecting {address[0]}")
                             try:
@@ -277,7 +276,7 @@ def main():
                                 pass
                             connection.close()
                             continue
-                    state.World.collector.start_threads()
+                    state.janitor.start_threads()
 
             except Exception as e:
                 if config.DEBUG:
@@ -285,7 +284,7 @@ def main():
     except KeyboardInterrupt:
         log("Received shutdown signal...")
     finally:
-        state.World.collector.running = False
+        state.janitor.running = False
         for s in server_sockets:
             try:
                 s.close()
@@ -294,6 +293,6 @@ def main():
         # Wait for threads to finish (graceful shutdown)
         shutdown_timeout = 5
         start_time = time.time()
-        while state.World.vlakna and (time.time() - start_time) < shutdown_timeout:
+        while state.threads and (time.time() - start_time) < shutdown_timeout:
             time.sleep(0.1)
         log("Shutting down...")

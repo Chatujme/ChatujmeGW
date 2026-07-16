@@ -7,32 +7,31 @@ import time
 import traceback as tb
 import urllib.request
 
-from . import commands, config, state
+from . import commands, config, numerics, state
 from .api import ChatujmeAPI
-from .models import User, UserInRoom
-from .models import RoomStruct
-from .numerics import IRC_RFC, MOTD_LINES
+from .models import Channel, ChannelMember, User
+from .numerics import MOTD_LINES
 from .util import log, sanitize_log
 
 
-class Chatujme:
+class ClientSession:
     def __init__(self, sock, address, handler):
         self.socket = sock
         self.address = address
         self.user = User()
+        self.server_name = config.SERVER_NAME
         self.api = ChatujmeAPI(self)
         self.connection = True
-        self.rooms = []
+        self.channels = []
         self.parent = handler
-        self.rfc = IRC_RFC()
         self.cap_negotiating = False
         self.send_lock = threading.Lock()
 
     # --- outgoing IRC lines ---
 
-    def send(self, code, msg):
+    def send_numeric(self, code, msg):
         """Send IRC numeric reply"""
-        line = f":{self.user.me} {code} {self.user.nick} {msg}\r\n"
+        line = f":{self.server_name} {code} {self.user.nick} {msg}\r\n"
         self.send_raw(line)
 
     def send_raw(self, msg):
@@ -43,7 +42,7 @@ class Chatujme:
         if config.DEBUG:
             log(f">> {msg.strip()}")
         try:
-            # Lock + sendall: two threads (parse + GetMessages) share this socket;
+            # Lock + sendall: two threads (parse + MessagePoller) share this socket;
             # a bare send() may write partially and interleave lines
             with self.send_lock:
                 self.socket.sendall(msg.encode('utf-8'))
@@ -66,18 +65,18 @@ class Chatujme:
             user.pending_ping_token = ping_token
         return True
 
-    def relogin(self):
+    def reauthenticate(self):
         """Re-authenticate after session expiry (silent - no duplicate welcome)."""
-        self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Session expired, attempting re-login...\r\n")
-        self.user.login = self.check_login(silent=True)
+        self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Session expired, attempting re-login...\r\n")
+        self.user.login = self.authenticate(silent=True)
         if self.user.login:
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Re-login successful\r\n")
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Re-login successful\r\n")
         else:
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Re-login failed, retrying later\r\n")
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Re-login failed, retrying later\r\n")
             time.sleep(10)
         return self.user.login
 
-    def check_login(self, silent=False):
+    def authenticate(self, silent=False):
         if not self.user.username or not self.user.nick or not self.user.password:
             if config.DEBUG:
                 log(f"[LOGIN] Missing credentials: user={self.user.username}, nick={self.user.nick}")
@@ -93,7 +92,7 @@ class Chatujme:
         )
 
         try:
-            response = self.api.check_login(self.user.username, self.user.password)
+            response = self.api.authenticate(self.user.username, self.user.password)
             if config.DEBUG:
                 log(f"[LOGIN] API response: {response[:200]}")  # sanitize_log handles password masking
             data = json.loads(response)
@@ -109,7 +108,7 @@ class Chatujme:
                 log(f"User logged in: {self.user.username}")
                 return True
             # 401 = bad credentials, 403 = 2FA required, anything else - relay server message
-            self.send(self.rfc.ERR_NOLOGIN, f"{self.user.username} :{message}")
+            self.send_numeric(numerics.ERR_NOLOGIN, f"{self.user.username} :{message}")
             return False
         except Exception as e:
             log(f"[LOGIN] Error: {e}")
@@ -122,76 +121,82 @@ class Chatujme:
         nick = self.user.nick
 
         # 001 RPL_WELCOME
-        self.send(self.rfc.RPL_WELCOME, f":Welcome to Chatujme.cz IRC Gateway {nick}!{nick}@{self.user.me}")
+        self.send_numeric(numerics.RPL_WELCOME, f":Welcome to Chatujme.cz IRC Gateway {nick}!{nick}@{self.server_name}")
         # 002 RPL_YOURHOST
-        self.send(self.rfc.RPL_YOURHOST, f":Your host is {self.user.me}, running ChatujmeGW v{config.VERSION}")
+        self.send_numeric(numerics.RPL_YOURHOST, f":Your host is {self.server_name}, running ChatujmeGW v{config.VERSION}")
         # 003 RPL_CREATED
-        self.send(self.rfc.RPL_CREATED, ":This server was created for Chatujme.cz")
+        self.send_numeric(numerics.RPL_CREATED, ":This server was created for Chatujme.cz")
         # 004 RPL_MYINFO
-        self.send(self.rfc.RPL_MYINFO, f"{self.user.me} ChatujmeGW-{config.VERSION} o o")
+        self.send_numeric(numerics.RPL_MYINFO, f"{self.server_name} ChatujmeGW-{config.VERSION} o o")
 
         # MOTD
-        self.send(self.rfc.RPL_MOTDSTART, f":- {self.user.me} Message of the Day -")
+        self.send_numeric(numerics.RPL_MOTDSTART, f":- {self.server_name} Message of the Day -")
         for line in MOTD_LINES:
-            formatted = line.format(user=self.user.username, sex=self.user.sex, host=self.user.me, version=config.VERSION)
-            self.send(self.rfc.RPL_MOTD, f":- {formatted}")
-        self.send(self.rfc.RPL_ENDOFMOTD, ":End of /MOTD command")
+            formatted = line.format(user=self.user.username, sex=self.user.sex, host=self.server_name, version=config.VERSION)
+            self.send_numeric(numerics.RPL_MOTD, f":- {formatted}")
+        self.send_numeric(numerics.RPL_ENDOFMOTD, ":End of /MOTD command")
 
         # Request client version via CTCP VERSION
-        self.send_raw(f":{self.user.me} PRIVMSG {self.user.nick} :\x01VERSION\x01\r\n")
+        self.send_raw(f":{self.server_name} PRIVMSG {self.user.nick} :\x01VERSION\x01\r\n")
 
     # --- room membership ---
 
-    def is_in_room(self, room, rtn=False):
+    def find_channel(self, channel_id):
+        """Return the joined Channel with this id, or None."""
         try:
-            rid = int(room)
+            cid = int(channel_id)
         except (ValueError, TypeError):
-            return False
-        for croom in self.rooms:
-            if rid == int(croom.id):
-                return croom if rtn else True
-        return False
+            return None
+        for channel in self.channels:
+            if cid == int(channel.id):
+                return channel
+        return None
 
-    def get_room_users(self, room_id):
-        response = self.api.get_users(room_id)
+    def in_channel(self, channel_id):
+        return self.find_channel(channel_id) is not None
+
+    def fetch_channel_members(self, channel_id):
+        """Fetch member list from the API; refresh the joined channel's members."""
+        response = self.api.get_users(channel_id)
         data = json.loads(response)
 
-        r = self.is_in_room(room_id, True)
-        if r:
-            r.users = []
-            for user in data:
-                u = UserInRoom()
-                u.nick = user["nick"]
-                u.sex = user["sex"]
-                r.users.append(u)
+        channel = self.find_channel(channel_id)
+        if channel:
+            channel.members = []
+            for entry in data:
+                member = ChannelMember()
+                member.nick = entry["nick"]
+                member.sex = entry["sex"]
+                channel.members.append(member)
 
         return data
 
-    def reload_users(self, rid):
-        data = self.get_room_users(rid)
-        users = " ".join([f"{self.user_op_status(u)}{u['nick']}" for u in data])
-        self.send(self.rfc.RPL_NAMREPLY, f"= #{rid} :{users}")
-        self.send(self.rfc.RPL_ENDOFNAMES, f"#{rid} :End of /NAMES list")
+    def send_names(self, channel_id):
+        """Send RPL_NAMREPLY / RPL_ENDOFNAMES with fresh member data."""
+        members = self.fetch_channel_members(channel_id)
+        names = " ".join([f"{self.membership_prefix(m)}{m['nick']}" for m in members])
+        self.send_numeric(numerics.RPL_NAMREPLY, f"= #{channel_id} :{names}")
+        self.send_numeric(numerics.RPL_ENDOFNAMES, f"#{channel_id} :End of /NAMES list")
 
-    def part(self, room_id, send_to_client=True):
-        croom = self.is_in_room(room_id, True)
-        if croom:
-            self.rooms.remove(croom)
-        if send_to_client:
-            self.send_raw(f":{self.user.nick} PART #{room_id}\r\n")
+    def part_channel(self, channel_id, notify_client=True):
+        channel = self.find_channel(channel_id)
+        if channel:
+            self.channels.remove(channel)
+        if notify_client:
+            self.send_raw(f":{self.user.nick} PART #{channel_id}\r\n")
         # Always try to notify server about leaving
         try:
-            self.api.part(room_id)
+            self.api.part(channel_id)
         except Exception as e:
             if config.DEBUG:
                 log(f"[PART] Error notifying server: {e}")
 
-    def handle_join(self, room):
-        in_room = self.is_in_room(room)
-        data = self.api.join(room)
+    def join_channel(self, channel_id):
+        already_joined = self.in_channel(channel_id)
+        data = self.api.join(channel_id)
 
         if config.DEBUG:
-            log(f"JOIN to {room}: {data}")
+            log(f"JOIN to {channel_id}: {data}")
 
         # Security: Safe access to API response
         code = data.get('code', 0)
@@ -199,15 +204,15 @@ class Chatujme:
         if code == 403:
             # Banned from channel - send both RFC error and NOTICE with detailed message
             ban_msg = data.get('message', 'Cannot join channel')
-            self.send(self.rfc.ERR_BANNEDFROMCHAN, f"#{data.get('id', room)} :Cannot join channel (+b)")
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{ban_msg}\r\n")
+            self.send_numeric(numerics.ERR_BANNEDFROMCHAN, f"#{data.get('id', channel_id)} :Cannot join channel (+b)")
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :{ban_msg}\r\n")
         elif code == 404:
-            self.send(self.rfc.ERR_NOSUCHCHANNEL, f"#{room} :No such channel")
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :{data.get('message', 'Room does not exist')}\r\n")
+            self.send_numeric(numerics.ERR_NOSUCHCHANNEL, f"#{channel_id} :No such channel")
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :{data.get('message', 'Room does not exist')}\r\n")
         elif code != 200:
             # Unknown error code - show as notice
             err_msg = data.get('message', f'Unknown error (code {code})')
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Error joining #{room}: {err_msg}\r\n")
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Error joining #{channel_id}: {err_msg}\r\n")
         else:
             # Ghost: activate connection and kill duplicates on first real JOIN
             nick_lower = self.user.nick.lower()
@@ -224,8 +229,8 @@ class Chatujme:
                     old_handler.running = False
                     if old_handler.instance:
                         old_handler.instance.connection = False
-                        # Old cleanup must not part rooms the new session is (re)joining
-                        old_handler.instance.rooms = []
+                        # Old cleanup must not part channels the new session is (re)joining
+                        old_handler.instance.channels = []
                     try:
                         # Close the socket so the old thread's blocking recv exits now,
                         # not after the 300s timeout
@@ -234,49 +239,49 @@ class Chatujme:
                         pass
                 state.active_connections[nick_lower] = self.parent
 
-            users_data = self.get_room_users(room)
-            users = " ".join([f"{self.user_op_status(u)}{u['nick']}" for u in users_data])
+            members = self.fetch_channel_members(channel_id)
+            names = " ".join([f"{self.membership_prefix(m)}{m['nick']}" for m in members])
 
-            if not in_room:
-                nowroom = RoomStruct()
-                nowroom.id = int(data['id'])
-                nowroom.nick = self.user.username
-                nowroom.idler_lastsend = time.time()
-                self.rooms.append(nowroom)
+            if not already_joined:
+                channel = Channel()
+                channel.id = int(data['id'])
+                channel.idler_last_sent = time.time()
+                self.channels.append(channel)
 
             # Send JOIN confirmation
-            self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.user.me} JOIN #{data['id']}\r\n")
-            self.send(self.rfc.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
-            self.send(self.rfc.RPL_NAMREPLY, f"= #{data['id']} :{users}")
-            self.send(self.rfc.RPL_ENDOFNAMES, f"#{data['id']} :End of /NAMES list")
+            self.send_raw(f":{self.user.nick}!{self.user.nick}@{self.server_name} JOIN #{data['id']}\r\n")
+            self.send_numeric(numerics.RPL_TOPIC, f"#{data['id']} :[{data['nazev']}] {data['topic']}")
+            self.send_numeric(numerics.RPL_NAMREPLY, f"= #{data['id']} :{names}")
+            self.send_numeric(numerics.RPL_ENDOFNAMES, f"#{data['id']} :End of /NAMES list")
 
     # --- helpers ---
 
-    def make_hostmask(self, nick, room_id):
+    def make_hostmask(self, nick, channel_id):
         """Create nick!user@host format with sex info"""
         try:
-            room = self.is_in_room(room_id, True)
-            if room:
-                for u in room.users:
-                    if u.nick == nick:
-                        return f"{nick}!{nick}@{u.sex}"
+            channel = self.find_channel(channel_id)
+            if channel:
+                for member in channel.members:
+                    if member.nick == nick:
+                        return f"{nick}!{nick}@{member.sex}"
             return f"{nick}!{nick}@users"
         except Exception:
             return f"{nick}!{nick}@users"
 
-    def user_op_status(self, user):
-        if user.get('isOwner') or user.get('isOP'):
+    def membership_prefix(self, member):
+        """Channel membership prefix (modern IRC spec): @ op, % halfop, + voice."""
+        if member.get('isOwner') or member.get('isOP'):
             return "@"
-        elif user.get('isHalfOP'):
+        elif member.get('isHalfOP'):
             return "%"
-        elif user.get('sex') == "girls":
+        elif member.get('sex') == "girls":
             return "+"
         return ""
 
     def send_text(self, text, room_id, target):
         # Rate limit only for messages to rooms (not internal calls)
-        if not self.check_command_rate():
-            self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
+        if not self.command_allowed():
+            self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
             return {"code": 429, "message": "Rate limited"}
         response = self.api.post_text(room_id, text, target)
         try:
@@ -284,7 +289,7 @@ class Chatujme:
         except Exception:
             return []
 
-    def check_command_rate(self):
+    def command_allowed(self):
         """Check if command rate limit exceeded. Returns True if allowed."""
         now = time.time()
         # Clean old entries (older than 1 second)
@@ -296,7 +301,7 @@ class Chatujme:
 
     # --- incoming IRC lines ---
 
-    def parse(self, data, timestamp):
+    def feed(self, data):
         if not data:
             self.connection = False
             return 2
@@ -319,12 +324,12 @@ class Chatujme:
                 log(f"<< {sanitize_log(line)}")
 
             # Rate limit commands that hit the Chatujme API (messages are limited in send_text)
-            if command in commands.RATE_LIMITED and not self.check_command_rate():
-                self.send_raw(f":{self.user.me} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
+            if command in commands.RATE_LIMITED and not self.command_allowed():
+                self.send_raw(f":{self.server_name} NOTICE {self.user.nick} :Rate limit exceeded. Slow down.\r\n")
                 continue
 
             handler = commands.HANDLERS.get(command)
             if handler:
                 handler(self, parts, line)
             else:
-                self.send(self.rfc.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")
+                self.send_numeric(numerics.ERR_UNKNOWNCOMMAND, f"{command} :Unknown command")

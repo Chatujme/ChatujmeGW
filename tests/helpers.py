@@ -1,7 +1,7 @@
 """Shared test doubles."""
 
-from chatujmegw.models import RoomStruct
-from chatujmegw.session import Chatujme
+from chatujmegw.models import Channel
+from chatujmegw.session import ClientSession
 
 
 class FakeSocket:
@@ -28,7 +28,7 @@ class FakeHandler:
 
 def make_inst():
     handler = FakeHandler()
-    inst = Chatujme(FakeSocket(), '127.0.0.1', handler)
+    inst = ClientSession(FakeSocket(), '127.0.0.1', handler)
     handler.instance = inst
     return inst
 
@@ -41,11 +41,11 @@ def make_logged_inst(nick="test2"):
     return inst
 
 
-def add_room(inst, room_id=15):
-    room = RoomStruct()
-    room.id = room_id
-    inst.rooms.append(room)
-    return room
+def add_channel(inst, channel_id=15):
+    channel = Channel()
+    channel.id = channel_id
+    inst.channels.append(channel)
+    return channel
 
 
 def sent(inst):

@@ -30,7 +30,7 @@ class ChatujmeAPI:
         self.sess = sess
 
     def _apply_headers(self):
-        headers = [('User-agent', config.UA)]
+        headers = [('User-agent', config.USER_AGENT)]
         if self.sess.user.client_version:
             headers.append(('X-IRC-Client', self.sess.user.client_version))
         # Send client IP if it's a public address
@@ -48,7 +48,7 @@ class ChatujmeAPI:
             if retry_count >= config.MAX_RETRIES:
                 log(f"[GET_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
                 return '{"code": 500, "message": "Connection failed after retries"}'
-            self.sess.send_raw(f":{self.sess.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
+            self.sess.send_raw(f":{self.sess.server_name} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
             time.sleep(config.RETRY_DELAY)
             return self.get(url, retry_count + 1)
 
@@ -69,14 +69,14 @@ class ChatujmeAPI:
             if retry_count >= config.MAX_RETRIES:
                 log(f"[POST_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
                 return '{"code": 500, "message": "Connection failed after retries"}'
-            self.sess.send_raw(f":{self.sess.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
+            self.sess.send_raw(f":{self.sess.server_name} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
             time.sleep(config.RETRY_DELAY)
             return self.post(url, postdata, retry_count + 1)
         except Exception as e:
             if retry_count >= config.MAX_RETRIES:
                 log(f"[POST_URL] Max retries ({config.MAX_RETRIES}) reached for {url}")
                 return '{"code": 500, "message": "Connection failed after retries"}'
-            self.sess.send_raw(f":{self.sess.user.me} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
+            self.sess.send_raw(f":{self.sess.server_name} NOTICE * :Connection error (retry {retry_count + 1}/{config.MAX_RETRIES}): {e}\r\n")
             time.sleep(config.RETRY_DELAY)
             return self.post(url, postdata, retry_count + 1)
 
@@ -93,7 +93,7 @@ class ChatujmeAPI:
 
     # --- endpoints ---
 
-    def check_login(self, username, password):
+    def authenticate(self, username, password):
         # Security: URL-encode username and password to prevent injection
         safe_username = urllib.parse.quote_plus(username)
         safe_password = urllib.parse.quote_plus(password)
